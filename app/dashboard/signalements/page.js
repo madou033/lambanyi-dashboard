@@ -99,6 +99,15 @@ export default function SignalementsPage() {
                 <p className="text-sm text-gray-500">
                   {s.description || 'Sans description'}
                 </p>
+                {s.photo_url && (
+                  <a href={s.photo_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={s.photo_url}
+                      alt="Photo du signalement"
+                      className="mt-2 h-24 w-32 object-cover rounded-lg border border-gray-200"
+                    />
+                  </a>
+                )}
                 <p className="text-xs text-gray-400">
                   {new Date(s.created_at).toLocaleDateString('fr-FR')}
                   {s.latitude === null && ' - Pas de position GPS'}
