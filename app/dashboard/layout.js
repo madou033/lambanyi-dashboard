@@ -36,7 +36,11 @@ export default function DashboardLayout(props) {
     { href: '/dashboard', label: 'Vue d ensemble' },
     { href: '/dashboard/menages', label: 'Menages' },
     { href: '/dashboard/collecteurs', label: 'Collecteurs' },
+    { href: '/dashboard/pme', label: 'PME' },
+    { href: '/dashboard/tarifs', label: 'Tarifs' },
+    { href: '/dashboard/paiements', label: 'Paiements' },
     { href: '/dashboard/tournees', label: 'Tournees' },
+    { href: '/dashboard/points-depot', label: 'Points de depot' },
     { href: '/dashboard/signalements', label: 'Signalements' },
   ];
 
