@@ -127,7 +127,7 @@ export default function SignalementsPage() {
                 )}
                 <p className="text-xs text-gray-400">
                   {formatHeure(s.created_at)}
-                  {s.latitude === null && ' - Pas de position GPS'}
+                  {s.latitude !== null && s.longitude !== null ? <a href={'https://www.google.com/maps?q=' + s.latitude + ',' + s.longitude} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{' - '}{Number(s.latitude).toFixed(5)}, {Number(s.longitude).toFixed(5)}</a> : ' - Pas de position GPS'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
