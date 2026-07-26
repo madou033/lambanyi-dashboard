@@ -9,6 +9,23 @@ const CarteSignalements = dynamic(
   { ssr: false, loading: function () { return <p className="text-gray-500">Chargement de la carte...</p>; } }
 );
 
+function formatHeure(iso) {
+  const d = new Date(iso);
+  const maintenant = new Date();
+  const diffMin = Math.floor((maintenant - d) / 60000);
+
+  let relatif;
+  if (diffMin < 1) relatif = 'a linstant';
+  else if (diffMin < 60) relatif = 'il y a ' + diffMin + ' min';
+  else if (diffMin < 1440) relatif = 'il y a ' + Math.floor(diffMin / 60) + ' h';
+  else relatif = 'il y a ' + Math.floor(diffMin / 1440) + ' j';
+
+  const absolu = d.toLocaleDateString('fr-FR') + ' a ' +
+    d.getHours() + 'h' + String(d.getMinutes()).padStart(2, '0');
+
+  return relatif + ' (' + absolu + ')';
+}
+
 const libellesTypes = {
   depotoir_sauvage: 'Depotoir sauvage',
   collecte_manquee: 'Collecte manquee',
@@ -109,7 +126,7 @@ export default function SignalementsPage() {
                   </a>
                 )}
                 <p className="text-xs text-gray-400">
-                  {new Date(s.created_at).toLocaleDateString('fr-FR')}
+                  {formatHeure(s.created_at)}
                   {s.latitude === null && ' - Pas de position GPS'}
                 </p>
               </div>
