@@ -42,6 +42,7 @@ export default function DashboardLayout(props) {
     { href: '/dashboard/tournees', label: 'Tournees' },
     { href: '/dashboard/points-depot', label: 'Points de depot' },
     { href: '/dashboard/signalements', label: 'Signalements' },
+    { href: '/dashboard/qr-menages', label: 'Codes QR' },
   ];
 
   if (!profil) {

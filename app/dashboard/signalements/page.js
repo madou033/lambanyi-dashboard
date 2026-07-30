@@ -43,6 +43,9 @@ const couleursStatuts = {
 export default function SignalementsPage() {
   const [signalements, setSignalements] = useState([]);
   const [filtreStatut, setFiltreStatut] = useState('');
+  const [filtreQuartier, setFiltreQuartier] = useState('');
+  const [filtreType, setFiltreType] = useState('');
+  const [filtrePeriode, setFiltrePeriode] = useState('');
 
   useEffect(function () {
     charger();
@@ -64,28 +67,118 @@ export default function SignalementsPage() {
     charger();
   }
 
-  const filtres = signalements.filter(function (s) {
-    return !filtreStatut || s.statut === filtreStatut;
+  const quartiersDispo = [];
+  signalements.forEach(function (s) {
+    if (s.quartier_nom && quartiersDispo.indexOf(s.quartier_nom) < 0) {
+      quartiersDispo.push(s.quartier_nom);
+    }
   });
+  quartiersDispo.sort();
+
+  function dansPeriode(iso) {
+    if (!filtrePeriode) {
+      return true;
+    }
+    const d = new Date(iso);
+    const maintenant = new Date();
+    const diffJours = (maintenant - d) / 86400000;
+    if (filtrePeriode === 'jour') {
+      return diffJours <= 1;
+    }
+    if (filtrePeriode === 'semaine') {
+      return diffJours <= 7;
+    }
+    if (filtrePeriode === 'mois') {
+      return diffJours <= 30;
+    }
+    return true;
+  }
+
+  const filtres = signalements.filter(function (s) {
+    if (filtreStatut && s.statut !== filtreStatut) {
+      return false;
+    }
+    if (filtreQuartier && s.quartier_nom !== filtreQuartier) {
+      return false;
+    }
+    if (filtreType && s.type_signalement !== filtreType) {
+      return false;
+    }
+    if (!dansPeriode(s.created_at)) {
+      return false;
+    }
+    return true;
+  });
+
+  function reinitialiserFiltres() {
+    setFiltreStatut('');
+    setFiltreQuartier('');
+    setFiltreType('');
+    setFiltrePeriode('');
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Signalements ({filtres.length})
-        </h2>
-        <select
-          value={filtreStatut}
-          onChange={function (e) { setFiltreStatut(e.target.value); }}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="">Tous les statuts</option>
-          <option value="nouveau">Nouveau</option>
-          <option value="en_cours">En cours</option>
-          <option value="resolu">Resolu</option>
-          <option value="rejete">Rejete</option>
-        </select>
-      </div>
+    <div className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-800">
+              Signalements ({filtres.length})
+            </h2>
+            <button
+              onClick={reinitialiserFiltres}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-2 text-gray-600 hover:bg-gray-50"
+            >
+              Reinitialiser les filtres
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={filtreStatut}
+              onChange={function (e) { setFiltreStatut(e.target.value); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Tous les statuts</option>
+              <option value="nouveau">Nouveau</option>
+              <option value="en_cours">En cours</option>
+              <option value="resolu">Resolu</option>
+              <option value="rejete">Rejete</option>
+            </select>
+
+            <select
+              value={filtreQuartier}
+              onChange={function (e) { setFiltreQuartier(e.target.value); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Tous les quartiers</option>
+              {quartiersDispo.map(function (q) {
+                return <option key={q} value={q}>{q}</option>;
+              })}
+            </select>
+
+            <select
+              value={filtreType}
+              onChange={function (e) { setFiltreType(e.target.value); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Tous les types</option>
+              <option value="depotoir_sauvage">Depotoir sauvage</option>
+              <option value="collecte_manquee">Collecte manquee</option>
+              <option value="bac_plein">Bac plein</option>
+              <option value="autre">Autre</option>
+            </select>
+
+            <select
+              value={filtrePeriode}
+              onChange={function (e) { setFiltrePeriode(e.target.value); }}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Toutes les periodes</option>
+              <option value="jour">Aujourd hui</option>
+              <option value="semaine">7 derniers jours</option>
+              <option value="mois">30 derniers jours</option>
+            </select>
+          </div>
+        </div>
 
       <div className="mb-6">
         <CarteSignalements signalements={filtres} />
