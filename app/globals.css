@@ -1,37 +1,382 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ------------------------------------------------------------------ */
+/* Jetons exposés à Tailwind — cf. DESIGN_SYSTEM.md §2                 */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  --font-sans: var(--font-dm-sans), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), Georgia, serif;
+  --font-mono: "SFMono-Regular", Consolas, "Roboto Mono", ui-monospace, monospace;
+
+  --color-bg: var(--lp-bg);
+  --color-bg2: var(--lp-bg2);
+  --color-panel: var(--lp-panel);
+  --color-panel2: var(--lp-panel2);
+  --color-line: var(--lp-line);
+  --color-line2: var(--lp-line2);
+  --color-txt: var(--lp-txt);
+  --color-muted: var(--lp-muted);
+  --color-muted2: var(--lp-muted2);
+  --color-green: var(--lp-green);
+  --color-greend: var(--lp-greend);
+  --color-gold: var(--lp-gold);
+  --color-teal: var(--lp-teal);
+  --color-blue: var(--lp-blue);
+  --color-red: var(--lp-red);
+  --color-violet: var(--lp-violet);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Sombre — thème par défaut */
+:root,
+[data-theme="dark"] {
+  --lp-bg: #0c1a16;
+  --lp-bg2: #0a1613;
+  --lp-panel: #12251f;
+  --lp-panel2: #16302a;
+  --lp-line: #22453a;
+  --lp-line2: #2e5a4b;
+  --lp-txt: #eaf5ef;
+  --lp-muted: #8dbca8;
+  --lp-muted2: #5e8a76;
+  --lp-green: #1fa971;
+  --lp-greend: #168054;
+  --lp-gold: #e0a93b;
+  --lp-teal: #16b39b;
+  --lp-blue: #3e86b5;
+  --lp-red: #e0323f;
+  --lp-violet: #8c7bd8;
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Clair — même langage, contrastes inversés */
+[data-theme="light"] {
+  --lp-bg: #eef4f0;
+  --lp-bg2: #e3ece7;
+  --lp-panel: #ffffff;
+  --lp-panel2: #f4f9f6;
+  --lp-line: #c9dbd2;
+  --lp-line2: #a9c4b7;
+  --lp-txt: #0c1a16;
+  --lp-muted: #4f7565;
+  --lp-muted2: #71947f;
+  --lp-green: #0f8f5c;
+  --lp-greend: #0a6b44;
+  --lp-gold: #b8860b;
+  --lp-teal: #0f8f7c;
+  --lp-blue: #2a6f9a;
+  --lp-red: #c62834;
+  --lp-violet: #6a58bd;
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--lp-txt);
+    background: var(--lp-bg);
+    overflow: hidden;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbar — pilule fine, plus visible au survol. La zone reste à 9px
+     pour l'ergonomie ; le pouce visible fait 3px (bordure transparente +
+     background-clip), 5px quand on le saisit. */
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--lp-line2) 70%, transparent);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--lp-muted2);
+    background-clip: content-box;
+    border-width: 2px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Firefox — les propriétés standard désactiveraient le style webkit sur
+     Chromium, donc on les scope aux navigateurs sans ::-webkit-scrollbar. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--lp-line2) 80%, transparent) transparent;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-mono {
+    font-family: var(--font-mono);
+  }
 }
+
+/* ------------------------------------------------------------------ */
+/* Mouvement — cf. DESIGN_SYSTEM.md §7                                 */
+/* ------------------------------------------------------------------ */
+
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lp-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes lp-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lp-green) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes lp-pulse-red {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lp-red) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes lp-badge-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lp-indicator {
+  from {
+    transform: translateY(-50%) scaleY(0);
+  }
+  to {
+    transform: translateY(-50%) scaleY(1);
+  }
+}
+
+/* Signature du tableau de bord — impulsion qui parcourt la ligne de tournée */
+@keyframes lp-trace {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -1000;
+  }
+}
+
+.lp-rise {
+  animation: lp-rise 0.45s ease-out both;
+}
+
+.lp-topbar {
+  background: linear-gradient(180deg, #102e25, #0c1a16);
+}
+[data-theme="light"] .lp-topbar {
+  background: linear-gradient(180deg, #ffffff, #eef4f0);
+}
+
+/* ------------------------------------------------------------------ */
+/* Modales — cf. DESIGN_SYSTEM.md §8                                   */
+/* ------------------------------------------------------------------ */
+
+.lp-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+.lp-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--lp-bg2) 48%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: lp-modal-fade 180ms ease-out;
+}
+.lp-modal-backdrop:disabled {
+  cursor: default;
+}
+.lp-modal-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  max-height: min(88dvh, 760px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--lp-line);
+  background: var(--lp-panel);
+  box-shadow:
+    0 24px 64px color-mix(in srgb, #000 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--lp-line2) 30%, transparent);
+  animation: lp-modal-pop 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes lp-modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lp-modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Leaflet — cf. DESIGN_SYSTEM.md §8                                   */
+/* ------------------------------------------------------------------ */
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  font-family: var(--font-sans);
+  background: var(--lp-bg2);
+  z-index: 0;
+}
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: color-mix(in srgb, var(--lp-bg) 80%, transparent) !important;
+  color: var(--lp-muted2) !important;
+}
+.leaflet-control-layers {
+  border: 1px solid var(--lp-line2) !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--lp-panel) 94%, transparent) !important;
+  color: var(--lp-txt) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-control-layers-expanded {
+  padding: 8px 10px !important;
+}
+.leaflet-control-layers label {
+  font-size: 12px !important;
+  color: var(--lp-txt) !important;
+}
+.lp-map-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Impression                                                          */
+/* ------------------------------------------------------------------ */
+
 @media print {
-  .no-print { display: none !important; }
-  nav, header, footer { display: none !important; }
-  .entete-impression { display: block !important; }
-  .zone-impression { width: 100%; }
-  table { font-size: 11px; width: 100%; }
-  th, td { border-bottom: 1px solid #ccc; padding: 4px 6px; }
-  thead { display: table-header-group; }
-  tr { page-break-inside: avoid; }
-  @page { size: A4 landscape; margin: 12mm; }
+  body {
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+  .no-print,
+  aside,
+  header.lp-topbar {
+    display: none !important;
+  }
+  .entete-impression {
+    display: block !important;
+  }
+  .zone-impression {
+    width: 100%;
+  }
+  table {
+    font-size: 11px;
+    width: 100%;
+  }
+  th,
+  td {
+    border-bottom: 1px solid #ccc;
+    padding: 4px 6px;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

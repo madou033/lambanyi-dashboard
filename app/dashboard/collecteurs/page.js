@@ -1,219 +1,542 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import {
+  Badge,
+  BandeauErreur,
+  Btn,
+  Champ,
+  Chip,
+  Modal,
+  PageHeader,
+  PaginationBar,
+  cn,
+  ilYA,
+  nombre,
+} from '@/components/ui';
+import {
+  BandeauMetriques,
+  CarteListe,
+  Recherche,
+  Tableau,
+  Td,
+  Tr,
+  exporterCsv,
+  usePagination,
+} from '@/components/liste';
+import { MiniBarres } from '@/components/graphes';
+import { IconPlus } from '@/components/icons';
+
+const FORM_VIDE = { nomComplet: '', telephone: '', email: '', motDePasse: '' };
+
+const FILTRES = [
+  { code: 'tous', label: 'Tous' },
+  { code: 'actif', label: 'En service' },
+  { code: 'inactif', label: 'Désactivés' },
+  { code: 'inactifs_7j', label: 'Sans pointage 7 j' },
+];
+
+const COLONNES = [
+  { cle: 'nom', label: 'Collecteur' },
+  { cle: 'tel', label: 'Téléphone' },
+  { cle: 'quartiers', label: 'Quartiers desservis' },
+  { cle: 'semaine', label: 'Activité 7 j', align: 'right' },
+  { cle: 'depots', label: 'Dépôts 7 j', align: 'right' },
+  { cle: 'dernier', label: 'Dernier pointage' },
+  { cle: 'statut', label: 'Statut' },
+  { cle: 'action', label: '', align: 'right', noPrint: true },
+];
 
 export default function CollecteursPage() {
   const [collecteurs, setCollecteurs] = useState([]);
-  const [formVisible, setFormVisible] = useState(false);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState(null);
+  // Horodatage du dernier chargement : appeler Date.now() pendant le rendu
+  // rendrait le composant impur.
+  const [instant, setInstant] = useState(0);
+
+  const [recherche, setRecherche] = useState('');
+  const [filtre, setFiltre] = useState('tous');
+
+  const [modale, setModale] = useState(false);
+  const [form, setForm] = useState(FORM_VIDE);
   const [enregistrement, setEnregistrement] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [messageForm, setMessageForm] = useState(null);
+  const [bascule, setBascule] = useState(null);
 
-  const [form, setForm] = useState({
-    nomComplet: '',
-    telephone: '',
-    email: '',
-    motDePasse: '',
-  });
-
-  useEffect(function () {
-    chargerCollecteurs();
+  const charger = useCallback(async function () {
+    // `collecteurs_activite` porte déjà les quartiers desservis et le volume
+    // de pointages — inutile de recomposer ça côté client.
+    const { data, error } = await supabase
+      .from('collecteurs_activite')
+      .select('*')
+      .order('nom_complet');
+    setChargement(false);
+    if (error) {
+      setErreur(`Impossible de charger les collecteurs : ${error.message}`);
+      return;
+    }
+    setErreur(null);
+    setCollecteurs(data || []);
+    setInstant(Date.now());
   }, []);
 
-  async function chargerCollecteurs() {
-    const { data } = await supabase
-      .from('profils')
-      .select('id, nom_complet, telephone, actif, created_at')
-      .eq('role', 'collecteur')
-      .order('created_at', { ascending: false });
-    setCollecteurs(data || []);
-  }
+  useEffect(
+    function () {
+      // Chargement initial. React déconseille de déclencher un fetch depuis un
+      // effet ; la parade propre serait une couche de données (React Query ou
+      // Suspense), ce que ce chantier de design n'introduit pas. Les setState
+      // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      charger();
+    },
+    [charger],
+  );
+
+  const filtres = useMemo(
+    function () {
+      const q = recherche.trim().toLowerCase();
+      const seuil7j = instant - 7 * 86_400_000;
+      return collecteurs.filter(function (c) {
+        if (filtre === 'actif' && !c.actif) return false;
+        if (filtre === 'inactif' && c.actif) return false;
+        if (filtre === 'inactifs_7j') {
+          if (!c.actif) return false;
+          if (c.dernier_passage && new Date(c.dernier_passage).getTime() >= seuil7j) return false;
+        }
+        if (!q) return true;
+        return `${c.nom_complet ?? ''} ${c.telephone ?? ''} ${c.quartier ?? ''}`
+          .toLowerCase()
+          .includes(q);
+      });
+    },
+    [collecteurs, recherche, filtre, instant],
+  );
+
+  const { page, pages, total, tranche, setPage } = usePagination(filtres, 25);
+
+  const enService = collecteurs.filter(function (c) {
+    return c.actif;
+  });
+  const passagesSemaine = collecteurs.reduce(function (s, c) {
+    return s + Number(c.nb_passages_semaine || 0);
+  }, 0);
+  const seuil7j = instant - 7 * 86_400_000;
+  const dormants = enService.filter(function (c) {
+    return !c.dernier_passage || new Date(c.dernier_passage).getTime() < seuil7j;
+  }).length;
+  const maxSemaine = Math.max(1, ...collecteurs.map(function (c) {
+    return Number(c.nb_passages_semaine || 0);
+  }));
+
+  /* -- Actions ----------------------------------------------------- */
 
   function majChamp(champ, valeur) {
-    const copie = Object.assign({}, form);
-    copie[champ] = valeur;
-    setForm(copie);
+    setForm(function (f) {
+      return { ...f, [champ]: valeur };
+    });
   }
 
-  async function ajouterCollecteur() {
-    setMessage(null);
-
+  async function creerCollecteur() {
+    setMessageForm(null);
     if (!form.nomComplet || !form.email || !form.motDePasse) {
-      setMessage({ type: 'erreur', texte: 'Nom, email et mot de passe sont obligatoires' });
+      setMessageForm('Nom, email et mot de passe sont obligatoires.');
       return;
     }
     if (form.motDePasse.length < 6) {
-      setMessage({ type: 'erreur', texte: 'Le mot de passe doit faire au moins 6 caracteres' });
+      setMessageForm('Le mot de passe doit faire au moins 6 caractères.');
       return;
     }
-
     setEnregistrement(true);
-
-    const { data: session } = await supabase.auth.getSession();
-
-    const reponse = await fetch('/api/collecteurs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: form.email,
-        motDePasse: form.motDePasse,
-        nomComplet: form.nomComplet,
-        telephone: form.telephone,
-        tokenAppelant: session.session.access_token,
-      }),
-    });
-
-    const resultat = await reponse.json();
-    setEnregistrement(false);
-
-    if (!reponse.ok) {
-      setMessage({ type: 'erreur', texte: resultat.erreur || 'Erreur inconnue' });
-      return;
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const reponse = await fetch('/api/collecteurs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: form.email,
+          motDePasse: form.motDePasse,
+          nomComplet: form.nomComplet,
+          telephone: form.telephone,
+          tokenAppelant: session.session.access_token,
+        }),
+      });
+      const resultat = await reponse.json().catch(function () {
+        return {};
+      });
+      setEnregistrement(false);
+      if (!reponse.ok) {
+        setMessageForm(resultat.erreur || "Le compte n'a pas pu être créé.");
+        return;
+      }
+      setForm(FORM_VIDE);
+      setModale(false);
+      charger();
+    } catch {
+      setEnregistrement(false);
+      setMessageForm(
+        "Le service de création de comptes est injoignable — vérifiez la configuration du serveur.",
+      );
     }
-
-    setMessage({ type: 'succes', texte: 'Collecteur cree avec succes' });
-    setForm({ nomComplet: '', telephone: '', email: '', motDePasse: '' });
-    setFormVisible(false);
-    chargerCollecteurs();
   }
 
-  async function basculerActif(collecteur) {
-    await supabase
+  async function confirmerBascule() {
+    setEnregistrement(true);
+    const { error } = await supabase
       .from('profils')
-      .update({ actif: !collecteur.actif })
-      .eq('id', collecteur.id);
-    chargerCollecteurs();
+      .update({ actif: !bascule.actif })
+      .eq('id', bascule.id);
+    setEnregistrement(false);
+    if (error) {
+      setErreur(`La mise à jour a échoué : ${error.message}`);
+    }
+    setBascule(null);
+    charger();
+  }
+
+  function exporter() {
+    exporterCsv(
+      'collecteurs',
+      [
+        'Nom',
+        'Téléphone',
+        'Quartiers',
+        'Passages 7 j',
+        'Dépôts 7 j',
+        'Passages total',
+        'Dernier pointage',
+        'Statut',
+      ],
+      filtres.map(function (c) {
+        return [
+          c.nom_complet,
+          c.telephone,
+          c.quartier,
+          c.nb_passages_semaine,
+          c.nb_depots_semaine,
+          c.nb_passages_total,
+          c.dernier_passage ? new Date(c.dernier_passage).toLocaleString('fr-FR') : '',
+          c.actif ? 'en service' : 'désactivé',
+        ];
+      }),
+    );
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Collecteurs ({collecteurs.length})
-        </h2>
-        <button
-          onClick={function () { setFormVisible(!formVisible); }}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-        >
-          {formVisible ? 'Fermer' : '+ Ajouter un collecteur'}
-        </button>
-      </div>
+    <div className="w-full">
+      <PageHeader
+        kicker="Terrain · Agents de collecte"
+        titre="Collecteurs"
+        sousTitre="Agents affectés aux tournées. L'activité se lit sur les sept derniers jours — un agent sans pointage est un signal."
+        actions={
+          <>
+            <Btn variant="ghost" onClick={exporter} disabled={filtres.length === 0}>
+              Exporter
+            </Btn>
+            <Btn
+              variant="green"
+              onClick={function () {
+                setMessageForm(null);
+                setForm(FORM_VIDE);
+                setModale(true);
+              }}
+            >
+              <IconPlus className="size-4" />
+              Nouveau collecteur
+            </Btn>
+          </>
+        }
+      />
 
-      {message && (
-        <div className={
-          'mb-4 p-3 rounded text-sm ' +
-          (message.type === 'succes'
-            ? 'bg-green-50 text-green-700'
-            : 'bg-red-50 text-red-700')
-        }>
-          {message.texte}
-        </div>
-      )}
+      <BandeauErreur message={erreur} onReessayer={charger} />
 
-      {formVisible && (
-        <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <h3 className="font-semibold text-gray-800 mb-4">Nouveau collecteur</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Nom complet *</label>
-              <input
-                value={form.nomComplet}
-                onChange={function (e) { majChamp('nomComplet', e.target.value); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                placeholder="Ex: Mamadou Diallo"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Telephone</label>
-              <input
-                value={form.telephone}
-                onChange={function (e) { majChamp('telephone', e.target.value); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                placeholder="6XX XX XX XX"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Email *</label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={function (e) { majChamp('email', e.target.value); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                placeholder="collecteur@lambanyi.gn"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Mot de passe *</label>
-              <input
-                type="text"
-                value={form.motDePasse}
-                onChange={function (e) { majChamp('motDePasse', e.target.value); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                placeholder="Minimum 6 caracteres"
-              />
-            </div>
-          </div>
-          <button
-            onClick={ajouterCollecteur}
-            disabled={enregistrement}
-            className="mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg text-sm font-medium"
-          >
-            {enregistrement ? 'Creation...' : 'Creer le collecteur'}
-          </button>
-        </div>
-      )}
+      <BandeauMetriques
+        metriques={[
+          {
+            label: 'En service',
+            valeur: chargement ? '—' : nombre(enService.length),
+            sous: `${nombre(collecteurs.length - enService.length)} désactivé${collecteurs.length - enService.length > 1 ? 's' : ''}`,
+            ton: 'teal',
+          },
+          {
+            label: 'Passages cette semaine',
+            valeur: chargement ? '—' : nombre(passagesSemaine),
+            sous: 'Tous collecteurs confondus',
+          },
+          {
+            label: 'Sans pointage 7 j',
+            valeur: chargement ? '—' : nombre(dormants),
+            sous: dormants > 0 ? 'Agents à relancer' : 'Tous ont pointé',
+            ton: dormants > 0 ? 'or' : 'teal',
+          },
+          {
+            label: 'Moyenne par agent',
+            valeur: chargement || enService.length === 0
+              ? '—'
+              : nombre(Math.round(passagesSemaine / enService.length)),
+            sous: 'Passages / semaine',
+          },
+        ]}
+      />
 
-      <div className="bg-white rounded-xl shadow overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
-            <tr>
-              <th className="text-left px-4 py-3">Nom</th>
-              <th className="text-left px-4 py-3">Telephone</th>
-              <th className="text-left px-4 py-3">Statut</th>
-              <th className="text-left px-4 py-3">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {collecteurs.length === 0 && (
-              <tr>
-                <td colSpan="4" className="px-4 py-6 text-gray-500 text-center">
-                  Aucun collecteur pour le moment.
-                </td>
-              </tr>
-            )}
-            {collecteurs.map(function (c) {
+      <CarteListe
+        titre="Annuaire des collecteurs"
+        sousTitre={
+          chargement
+            ? 'Chargement…'
+            : `${nombre(total)} résultat${total > 1 ? 's' : ''}${total !== collecteurs.length ? ` · ${nombre(collecteurs.length)} au total` : ''}`
+        }
+        outils={
+          <Recherche valeur={recherche} onChange={setRecherche} placeholder="Nom, téléphone…" />
+        }
+        chips={
+          <div className="flex flex-wrap gap-1.5">
+            {FILTRES.map(function (f) {
               return (
-                <tr key={c.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3 font-medium text-gray-800">
-                    {c.nom_complet}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {c.telephone || '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={
-                      'text-xs px-3 py-1 rounded-full ' +
-                      (c.actif
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-600')
-                    }>
-                      {c.actif ? 'actif' : 'desactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={function () { basculerActif(c); }}
-                      className="text-sm text-green-700 hover:underline"
-                    >
-                      {c.actif ? 'Desactiver' : 'Reactiver'}
-                    </button>
-                  </td>
-                </tr>
+                <Chip
+                  key={f.code}
+                  actif={filtre === f.code}
+                  onClick={function () {
+                    setFiltre(f.code);
+                  }}
+                >
+                  {f.label}
+                </Chip>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+        pied={<PaginationBar page={page} pages={pages} total={total} onChange={setPage} />}
+      >
+        <Tableau
+          colonnes={COLONNES}
+          vide={
+            chargement
+              ? 'Chargement de l’annuaire…'
+              : collecteurs.length === 0
+                ? "Aucun collecteur — créez un premier compte pour affecter des tournées."
+                : 'Aucun collecteur ne correspond à ces filtres.'
+          }
+        >
+          {tranche.map(function (c, rang) {
+            const dormant =
+              c.actif && (!c.dernier_passage || new Date(c.dernier_passage).getTime() < seuil7j);
+            return (
+              <Tr key={c.id} rang={rang}>
+                <Td fort>
+                  <span className="flex items-center gap-2.5">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line2 bg-panel2 font-mono text-[11px] font-bold text-txt">
+                      {String(c.nom_complet ?? '?')
+                        .trim()
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map(function (m) {
+                          return m[0];
+                        })
+                        .join('')
+                        .toUpperCase()}
+                    </span>
+                    <span className="min-w-0 truncate">{c.nom_complet}</span>
+                  </span>
+                </Td>
+                <Td mono>{c.telephone || '—'}</Td>
+                <Td className="max-w-[220px] truncate">
+                  {c.quartier || <span className="text-muted2">Aucune tournée affectée</span>}
+                </Td>
+                <Td align="right">
+                  <span className="inline-flex items-center justify-end gap-2.5">
+                    <span className="w-14">
+                      <MiniBarres
+                        valeurs={[
+                          Math.max(0, Number(c.nb_passages_semaine || 0) - 2),
+                          Number(c.nb_passages_semaine || 0),
+                        ].map(function (v) {
+                          return (v / maxSemaine) * 10;
+                        })}
+                        accent="var(--lp-teal)"
+                      />
+                    </span>
+                    <span className="font-mono font-bold text-txt tabular-nums">
+                      {nombre(c.nb_passages_semaine)}
+                    </span>
+                  </span>
+                </Td>
+                <Td align="right" mono>
+                  {nombre(c.nb_depots_semaine)}
+                </Td>
+                <Td>
+                  {c.dernier_passage ? (
+                    <span className={cn(dormant && 'text-gold')}>{ilYA(c.dernier_passage)}</span>
+                  ) : (
+                    <span className="text-muted2">Jamais</span>
+                  )}
+                </Td>
+                <Td>
+                  {c.actif ? (
+                    dormant ? (
+                      <Badge ton="or">Inactif 7 j</Badge>
+                    ) : (
+                      <Badge ton="teal">En service</Badge>
+                    )
+                  ) : (
+                    <Badge ton="muted">Désactivé</Badge>
+                  )}
+                </Td>
+                <Td align="right" className="no-print">
+                  <button
+                    type="button"
+                    onClick={function () {
+                      setBascule(c);
+                    }}
+                    className="cursor-pointer rounded-lg border border-line2 px-2.5 py-1 text-[11px] font-semibold text-txt outline-none transition-colors hover:bg-panel2 focus-visible:ring-2 focus-visible:ring-blue"
+                  >
+                    {c.actif ? 'Désactiver' : 'Réactiver'}
+                  </button>
+                </Td>
+              </Tr>
+            );
+          })}
+        </Tableau>
+      </CarteListe>
+
+      {/* Création de compte */}
+      <Modal
+        ouvert={modale}
+        onFermer={function () {
+          setModale(false);
+        }}
+        titre="Nouveau collecteur"
+        sousTitre="Un compte est créé pour l'application mobile de terrain."
+        taille="lg"
+        bloquerFermeture={enregistrement}
+        pied={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn
+              variant="ghost"
+              disabled={enregistrement}
+              onClick={function () {
+                setModale(false);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn variant="green" disabled={enregistrement} onClick={creerCollecteur}>
+              {enregistrement ? 'Création…' : 'Créer le compte'}
+            </Btn>
+          </div>
+        }
+      >
+        {messageForm ? (
+          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+            {messageForm}
+          </p>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Nom complet *
+            </span>
+            <Champ
+              value={form.nomComplet}
+              onChange={function (e) {
+                majChamp('nomComplet', e.target.value);
+              }}
+              placeholder="Prénom Nom"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Téléphone
+            </span>
+            <Champ
+              value={form.telephone}
+              onChange={function (e) {
+                majChamp('telephone', e.target.value);
+              }}
+              placeholder="6XX XX XX XX"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Email *
+            </span>
+            <Champ
+              type="email"
+              autoComplete="off"
+              value={form.email}
+              onChange={function (e) {
+                majChamp('email', e.target.value);
+              }}
+              placeholder="agent@commune.gn"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Mot de passe *
+            </span>
+            <Champ
+              type="password"
+              autoComplete="new-password"
+              value={form.motDePasse}
+              onChange={function (e) {
+                majChamp('motDePasse', e.target.value);
+              }}
+              placeholder="6 caractères minimum"
+            />
+          </label>
+        </div>
+      </Modal>
+
+      {/* Bascule actif/inactif */}
+      <Modal
+        ouvert={Boolean(bascule)}
+        onFermer={function () {
+          setBascule(null);
+        }}
+        titre={bascule?.actif ? 'Désactiver ce collecteur ?' : 'Réactiver ce collecteur ?'}
+        taille="sm"
+        bloquerFermeture={enregistrement}
+        pied={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn
+              variant="ghost"
+              disabled={enregistrement}
+              onClick={function () {
+                setBascule(null);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn
+              variant={bascule?.actif ? 'red' : 'green'}
+              disabled={enregistrement}
+              onClick={confirmerBascule}
+            >
+              {enregistrement ? 'Patientez…' : bascule?.actif ? 'Désactiver' : 'Réactiver'}
+            </Btn>
+          </div>
+        }
+      >
+        <p className="m-0 text-[13.5px] leading-relaxed text-muted">
+          {bascule?.actif ? (
+            <>
+              <b className="text-txt">{bascule?.nom_complet}</b> ne pourra plus se connecter à
+              l&apos;application de terrain ni pointer de passage. Ses tournées restent affectées — pensez
+              à les réattribuer.
+            </>
+          ) : (
+            <>
+              <b className="text-txt">{bascule?.nom_complet}</b> retrouvera l&apos;accès à
+              l&apos;application de terrain et pourra à nouveau pointer.
+            </>
+          )}
+        </p>
+      </Modal>
     </div>
   );
 }

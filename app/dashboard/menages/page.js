@@ -1,413 +1,697 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import {
+  BadgeStatut,
+  BandeauErreur,
+  Badge,
+  Btn,
+  Champ,
+  Chip,
+  Modal,
+  PageHeader,
+  PaginationBar,
+  Selecteur,
+  cn,
+  montant,
+  nombre,
+} from '@/components/ui';
+import {
+  BandeauMetriques,
+  CarteListe,
+  EnteteImpression,
+  Recherche,
+  SelectFiltre,
+  Tableau,
+  Td,
+  Tr,
+  exporterCsv,
+  usePagination,
+} from '@/components/liste';
+import { IconPlus } from '@/components/icons';
+
+const TYPES_MENAGE = [
+  { code: 'residentiel', label: 'Résidentiel' },
+  { code: 'commerce', label: 'Commerce' },
+  { code: 'institution', label: 'Institution' },
+  { code: 'industrie', label: 'Industrie' },
+];
+
+const FILTRES_PAIEMENT = [
+  { code: 'tous', label: 'Tous' },
+  { code: 'a_jour', label: 'À jour' },
+  { code: 'en_retard', label: 'En dette' },
+  { code: 'sans', label: 'Sans abonnement' },
+];
+
+const FORM_VIDE = {
+  quartier_id: '',
+  point_repere: '',
+  telephone_contact: '',
+  type_menage: 'residentiel',
+  nb_personnes: '',
+};
+
+const COLONNES = [
+  { cle: 'code', label: 'Code' },
+  { cle: 'quartier', label: 'Quartier' },
+  { cle: 'repere', label: 'Point de repère' },
+  { cle: 'tel', label: 'Téléphone' },
+  { cle: 'type', label: 'Type' },
+  { cle: 'plan', label: 'Plan' },
+  { cle: 'echeance', label: 'Échéance' },
+  { cle: 'solde', label: 'Recouvrement' },
+  { cle: 'statut', label: 'Statut' },
+  { cle: 'action', label: '', align: 'right', noPrint: true },
+];
+
+function libelleType(code) {
+  const t = TYPES_MENAGE.find(function (x) {
+    return x.code === code;
+  });
+  return t ? t.label : code;
+}
+
+function dateCourte(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+/** Le recouvrement se lit d'un coup d'œil : à jour, en dette, ou jamais souscrit. */
+function CelluleSolde({ m }) {
+  if (!m.abonnement_id) return <Badge ton="muted">Sans abonnement</Badge>;
+  if (m.est_solde) return <Badge ton="teal">À jour</Badge>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Badge ton="rouge">
+        {m.mois_dus} mois
+      </Badge>
+      <span className="font-mono text-[11.5px] font-bold text-red tabular-nums">
+        {montant(m.total_du)}
+      </span>
+    </span>
+  );
+}
 
 export default function MenagesPage() {
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
-  const [plans, setPlans] = useState([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState(null);
+
   const [recherche, setRecherche] = useState('');
   const [filtreQuartier, setFiltreQuartier] = useState('');
-  const [filtrePaiement, setFiltrePaiement] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('');
-  const [formVisible, setFormVisible] = useState(false);
-  const [enregistrement, setEnregistrement] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [filtrePaiement, setFiltrePaiement] = useState('tous');
+
+  const [modaleMenage, setModaleMenage] = useState(false);
+  const [form, setForm] = useState(FORM_VIDE);
   const [cible, setCible] = useState(null);
+  const [plans, setPlans] = useState([]);
   const [planChoisi, setPlanChoisi] = useState('');
+  const [enregistrement, setEnregistrement] = useState(false);
+  const [messageForm, setMessageForm] = useState(null);
 
-  const [nouveauMenage, setNouveauMenage] = useState({
-    quartier_id: '',
-    point_repere: '',
-    telephone_contact: '',
-    type_menage: 'residentiel',
-    nb_personnes: '',
-  });
-
-  useEffect(function () {
-    chargerQuartiers();
-    chargerLignes();
+  const charger = useCallback(async function () {
+    const [registre, refQuartiers] = await Promise.all([
+      supabase.from('menages_solde').select('*').order('code_menage', { ascending: true }),
+      supabase.from('quartiers').select('id, nom').order('nom'),
+    ]);
+    setChargement(false);
+    if (registre.error) {
+      setErreur(`Impossible de charger le registre : ${registre.error.message}`);
+      return;
+    }
+    setErreur(null);
+    setLignes(registre.data || []);
+    setQuartiers(refQuartiers.data || []);
   }, []);
 
-  async function chargerQuartiers() {
-    const { data } = await supabase.from('quartiers').select('id, nom').order('nom');
-    setQuartiers(data || []);
-  }
+  useEffect(
+    function () {
+      // Chargement initial. React déconseille de déclencher un fetch depuis un
+      // effet ; la parade propre serait une couche de données (React Query ou
+      // Suspense), ce que ce chantier de design n'introduit pas. Les setState
+      // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      charger();
+    },
+    [charger],
+  );
 
-  async function chargerLignes() {
-    const { data } = await supabase
-      .from('menages_solde')
-      .select('*')
-      .order('code_menage', { ascending: true });
-    setLignes(data || []);
-  }
+  const filtrees = useMemo(
+    function () {
+      const q = recherche.trim().toLowerCase();
+      return lignes.filter(function (m) {
+        if (filtreQuartier && m.quartier !== filtreQuartier) return false;
+        if (filtreStatut && m.statut_menage !== filtreStatut) return false;
+        if (filtrePaiement === 'a_jour' && m.est_solde !== true) return false;
+        if (filtrePaiement === 'en_retard' && !(m.abonnement_id && m.est_solde === false)) return false;
+        if (filtrePaiement === 'sans' && m.abonnement_id) return false;
+        if (!q) return true;
+        return `${m.code_menage ?? ''} ${m.point_repere ?? ''} ${m.telephone_contact ?? ''}`
+          .toLowerCase()
+          .includes(q);
+      });
+    },
+    [lignes, recherche, filtreQuartier, filtreStatut, filtrePaiement],
+  );
+
+  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25);
+
+  const totalDu = filtrees.reduce(function (s, m) {
+    return s + Number(m.total_du || 0);
+  }, 0);
+  const nbRetard = filtrees.filter(function (m) {
+    return m.abonnement_id && m.est_solde === false;
+  }).length;
+  const nbSans = filtrees.filter(function (m) {
+    return !m.abonnement_id;
+  }).length;
+  const nbAJour = filtrees.filter(function (m) {
+    return m.est_solde === true;
+  }).length;
+
+  /* -- Actions ----------------------------------------------------- */
 
   function majChamp(champ, valeur) {
-    const copie = Object.assign({}, nouveauMenage);
-    copie[champ] = valeur;
-    setNouveauMenage(copie);
+    setForm(function (f) {
+      return { ...f, [champ]: valeur };
+    });
   }
 
-  async function ajouterMenage() {
-    setMessage(null);
-    if (!nouveauMenage.quartier_id || !nouveauMenage.point_repere || !nouveauMenage.telephone_contact) {
-      setMessage({ type: 'erreur', texte: 'Quartier, point de repere et telephone sont obligatoires' });
+  async function enregistrerMenage() {
+    setMessageForm(null);
+    if (!form.quartier_id || !form.point_repere || !form.telephone_contact) {
+      setMessageForm('Quartier, point de repère et téléphone sont obligatoires.');
       return;
     }
     setEnregistrement(true);
-
     const ligne = {
-      quartier_id: nouveauMenage.quartier_id,
-      point_repere: nouveauMenage.point_repere,
-      telephone_contact: nouveauMenage.telephone_contact,
-      type_menage: nouveauMenage.type_menage,
+      quartier_id: form.quartier_id,
+      point_repere: form.point_repere,
+      telephone_contact: form.telephone_contact,
+      type_menage: form.type_menage,
     };
-    if (nouveauMenage.nb_personnes) {
-      ligne.nb_personnes = parseInt(nouveauMenage.nb_personnes, 10);
-    }
+    if (form.nb_personnes) ligne.nb_personnes = parseInt(form.nb_personnes, 10);
 
     const { error } = await supabase.from('menages').insert(ligne);
     setEnregistrement(false);
-
     if (error) {
-      setMessage({ type: 'erreur', texte: 'Erreur : ' + error.message });
+      setMessageForm(`Erreur : ${error.message}`);
       return;
     }
-
-    setMessage({ type: 'succes', texte: 'Menage ajoute avec succes' });
-    setNouveauMenage({
-      quartier_id: '', point_repere: '', telephone_contact: '',
-      type_menage: 'residentiel', nb_personnes: '',
-    });
-    setFormVisible(false);
-    chargerLignes();
+    setForm(FORM_VIDE);
+    setModaleMenage(false);
+    charger();
   }
 
-  function ouvrirAbonnement(m) {
+  async function ouvrirAbonnement(m) {
     setCible(m);
     setPlanChoisi('');
-    setMessage(null);
-    fetch('/api/abonnements?type_menage=' + encodeURIComponent(m.type_menage))
-      .then(function (r) { return r.json(); })
-      .then(function (j) { setPlans(j.data || []); });
+    setMessageForm(null);
+    setPlans([]);
+    try {
+      const r = await fetch(`/api/abonnements?type_menage=${encodeURIComponent(m.type_menage)}`);
+      if (!r.ok) throw new Error('Service indisponible');
+      const j = await r.json();
+      setPlans(j.data || []);
+    } catch {
+      setMessageForm("Impossible de charger les plans tarifaires — vérifiez la configuration du serveur.");
+    }
   }
 
-  function creerAbonnement() {
+  async function creerAbonnement() {
     if (!planChoisi) {
-      setMessage({ type: 'erreur', texte: 'Choisissez un plan' });
+      setMessageForm('Choisissez un plan.');
       return;
     }
     setEnregistrement(true);
-    fetch('/api/abonnements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ menage_id: cible.menage_id, plan_id: planChoisi })
-    })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (res) {
-        setEnregistrement(false);
-        if (!res.ok) { setMessage({ type: 'erreur', texte: res.j.error }); return; }
-        setMessage({ type: 'succes', texte: 'Abonnement cree. Le premier mois est du.' });
-        setCible(null);
-        chargerLignes();
-      })
-      .catch(function () {
-        setEnregistrement(false);
-        setMessage({ type: 'erreur', texte: 'Erreur reseau' });
+    try {
+      const r = await fetch('/api/abonnements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menage_id: cible.menage_id, plan_id: planChoisi }),
       });
+      const j = await r.json().catch(function () {
+        return {};
+      });
+      setEnregistrement(false);
+      if (!r.ok) {
+        setMessageForm(j.error || "L'abonnement n'a pas pu être créé.");
+        return;
+      }
+      setCible(null);
+      charger();
+    } catch {
+      setEnregistrement(false);
+      setMessageForm('Erreur réseau.');
+    }
   }
-
-  function formatGnf(v) {
-    if (v === null || v === undefined) return '-';
-    return Number(v).toLocaleString('fr-FR') + ' GNF';
-  }
-
-  const filtrees = lignes.filter(function (m) {
-    const texte = ((m.code_menage || '') + ' ' + (m.point_repere || '') + ' ' + (m.telephone_contact || '')).toLowerCase();
-    const okRecherche = texte.includes(recherche.toLowerCase());
-    const okQuartier = !filtreQuartier || m.quartier === filtreQuartier;
-    const okStatut = !filtreStatut || m.statut_menage === filtreStatut;
-    let okPaiement = true;
-    if (filtrePaiement === 'a_jour') okPaiement = m.est_solde === true;
-    if (filtrePaiement === 'en_retard') okPaiement = m.est_solde === false;
-    if (filtrePaiement === 'sans') okPaiement = !m.abonnement_id;
-    return okRecherche && okQuartier && okStatut && okPaiement;
-  });
-
-  const totalDu = filtrees.reduce(function (s, m) { return s + Number(m.total_du || 0); }, 0);
-  const nbRetard = filtrees.filter(function (m) { return m.est_solde === false; }).length;
-  const nbSans = filtrees.filter(function (m) { return !m.abonnement_id; }).length;
 
   function exporter() {
-    const entetes = ['Code', 'Quartier', 'Point de repere', 'Telephone', 'Type',
-      'Plan', 'Echeance', 'Mois dus', 'Montant du', 'Etat', 'Statut menage'];
-    const corps = filtrees.map(function (m) {
-      const etat = !m.abonnement_id ? 'sans abonnement' : (m.est_solde ? 'a jour' : 'en retard');
-      return [m.code_menage || '', m.quartier || '', m.point_repere || '',
-        m.telephone_contact || '', m.type_menage || '', m.plan_code || '',
-        m.date_fin || '', m.mois_dus === null ? '' : m.mois_dus,
-        m.total_du || 0, etat, m.statut_menage || '']
-        .map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; })
-        .join(';');
-    });
-    const contenu = '\uFEFF' + entetes.join(';') + '\n' + corps.join('\n');
-    const lien = document.createElement('a');
-    lien.href = URL.createObjectURL(new Blob([contenu], { type: 'text/csv;charset=utf-8' }));
-    lien.download = 'menages_' + new Date().toISOString().slice(0, 10) + '.csv';
-    lien.click();
-  }
-
-  const badgesStatut = {
-    actif: 'bg-green-100 text-green-700',
-    suspendu: 'bg-yellow-100 text-yellow-700',
-    resilie: 'bg-gray-100 text-gray-600',
-  };
-
-  function badgePaiement(m) {
-    if (!m.abonnement_id) {
-      return <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-600">sans abonnement</span>;
-    }
-    if (m.est_solde) {
-      return <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700">a jour</span>;
-    }
-    return (
-      <span className="text-xs px-3 py-1 rounded-full bg-red-100 text-red-700">
-        {m.mois_dus} mois - {formatGnf(m.total_du)}
-      </span>
+    exporterCsv(
+      'menages',
+      [
+        'Code',
+        'Quartier',
+        'Point de repère',
+        'Téléphone',
+        'Type',
+        'Plan',
+        'Échéance',
+        'Mois dus',
+        'Montant dû (GNF)',
+        'Recouvrement',
+        'Statut',
+      ],
+      filtrees.map(function (m) {
+        const etat = !m.abonnement_id ? 'sans abonnement' : m.est_solde ? 'à jour' : 'en dette';
+        return [
+          m.code_menage,
+          m.quartier,
+          m.point_repere,
+          m.telephone_contact,
+          libelleType(m.type_menage),
+          m.plan_code,
+          m.date_fin,
+          m.mois_dus ?? '',
+          m.total_du || 0,
+          etat,
+          m.statut_menage,
+        ];
+      }),
     );
   }
 
+  const contexteImpression = [
+    filtreQuartier || 'tous quartiers',
+    FILTRES_PAIEMENT.find(function (f) {
+      return f.code === filtrePaiement;
+    })?.label,
+    `${nombre(total)} foyers · ${montant(totalDu)} dus`,
+  ].join(' · ');
+
   return (
-    <div>
+    <div className="w-full">
       <div className="no-print">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">Menages ({filtrees.length})</h2>
-          <div className="flex gap-2">
-            <button onClick={exporter}
-              className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-lg text-sm font-medium">
-              Exporter CSV
-            </button>
-            <button onClick={function () { window.print(); }}
-              className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm font-medium">
-              Imprimer
-            </button>
-            <button onClick={function () { setFormVisible(!formVisible); }}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
-              {formVisible ? 'Fermer' : '+ Ajouter un menage'}
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          kicker="Usagers · Registre"
+          titre="Ménages"
+          sousTitre="Foyers abonnés de la commune, avec leur situation de recouvrement. Un foyer sans abonnement n'est pas facturable."
+          actions={
+            <>
+              <Btn variant="ghost" onClick={exporter} disabled={filtrees.length === 0}>
+                Exporter
+              </Btn>
+              <Btn
+                variant="ghost"
+                onClick={function () {
+                  window.print();
+                }}
+              >
+                Imprimer
+              </Btn>
+              <Btn
+                variant="green"
+                onClick={function () {
+                  setMessageForm(null);
+                  setForm(FORM_VIDE);
+                  setModaleMenage(true);
+                }}
+              >
+                <IconPlus className="size-4" />
+                Nouveau ménage
+              </Btn>
+            </>
+          }
+        />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-xs text-gray-500">Total du</div>
-            <div className="text-xl font-semibold text-red-600">{formatGnf(totalDu)}</div>
-          </div>
-          <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-xs text-gray-500">Menages en retard</div>
-            <div className="text-xl font-semibold text-gray-800">{nbRetard}</div>
-          </div>
-          <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-xs text-gray-500">Sans abonnement</div>
-            <div className="text-xl font-semibold text-gray-800">{nbSans}</div>
-          </div>
-        </div>
+        <BandeauErreur message={erreur} onReessayer={charger} />
 
-        {message && (
-          <div className={'mb-4 p-3 rounded text-sm ' +
-            (message.type === 'succes' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>
-            {message.texte}
-          </div>
-        )}
-
-        {cible && (
-          <div className="bg-white rounded-xl shadow p-6 mb-6">
-            <h3 className="font-semibold text-gray-800 mb-3">
-              Nouvel abonnement - {cible.code_menage} ({cible.type_menage})
-            </h3>
-            <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
-              <div className="flex-1">
-                <label className="block text-sm text-gray-600 mb-1">Plan</label>
-                <select value={planChoisi}
-                  onChange={function (e) { setPlanChoisi(e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                  <option value="">-- Choisir --</option>
-                  {plans.map(function (p) {
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {p.code} - {p.passages_par_semaine} passages/semaine - {formatGnf(p.montant_gnf)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              <button onClick={creerAbonnement} disabled={enregistrement}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg text-sm font-medium">
-                {enregistrement ? 'Creation...' : 'Creer'}
-              </button>
-              <button onClick={function () { setCible(null); }}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm">
-                Annuler
-              </button>
-            </div>
-          </div>
-        )}
-
-        {formVisible && (
-          <div className="bg-white rounded-xl shadow p-6 mb-6">
-            <h3 className="font-semibold text-gray-800 mb-4">Nouveau menage</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Quartier *</label>
-                <select value={nouveauMenage.quartier_id}
-                  onChange={function (e) { majChamp('quartier_id', e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                  <option value="">-- Choisir --</option>
-                  {quartiers.map(function (q) {
-                    return <option key={q.id} value={q.id}>{q.nom}</option>;
-                  })}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Type</label>
-                <select value={nouveauMenage.type_menage}
-                  onChange={function (e) { majChamp('type_menage', e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                  <option value="residentiel">Residentiel</option>
-                  <option value="commerce">Commerce</option>
-                  <option value="institution">Institution</option>
-                  <option value="industrie">Industrie</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Point de repere *</label>
-                <input value={nouveauMenage.point_repere}
-                  onChange={function (e) { majChamp('point_repere', e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  placeholder="Ex: Pres de la mosquee, 2e rue" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Telephone *</label>
-                <input value={nouveauMenage.telephone_contact}
-                  onChange={function (e) { majChamp('telephone_contact', e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  placeholder="6XX XX XX XX" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Nombre de personnes</label>
-                <input type="number" value={nouveauMenage.nb_personnes}
-                  onChange={function (e) { majChamp('nb_personnes', e.target.value); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  placeholder="Optionnel" />
-              </div>
-            </div>
-            <button onClick={ajouterMenage} disabled={enregistrement}
-              className="mt-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg text-sm font-medium">
-              {enregistrement ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        )}
-
-        <div className="flex flex-col md:flex-row gap-3 mb-4">
-          <input value={recherche}
-            onChange={function (e) { setRecherche(e.target.value); }}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
-            placeholder="Code LP, repere ou telephone..." />
-          <select value={filtreQuartier}
-            onChange={function (e) { setFiltreQuartier(e.target.value); }}
-            className="border border-gray-300 rounded-lg px-3 py-2">
-            <option value="">Tous les quartiers</option>
-            {quartiers.map(function (q) {
-              return <option key={q.id} value={q.nom}>{q.nom}</option>;
-            })}
-          </select>
-          <select value={filtrePaiement}
-            onChange={function (e) { setFiltrePaiement(e.target.value); }}
-            className="border border-gray-300 rounded-lg px-3 py-2">
-            <option value="">Tous les paiements</option>
-            <option value="a_jour">A jour</option>
-            <option value="en_retard">En retard</option>
-            <option value="sans">Sans abonnement</option>
-          </select>
-          <select value={filtreStatut}
-            onChange={function (e) { setFiltreStatut(e.target.value); }}
-            className="border border-gray-300 rounded-lg px-3 py-2">
-            <option value="">Tous les statuts</option>
-            <option value="actif">Actif</option>
-            <option value="suspendu">Suspendu</option>
-            <option value="resilie">Resilie</option>
-          </select>
-        </div>
+        <BandeauMetriques
+          metriques={[
+            {
+              label: 'Créances ouvertes',
+              valeur: chargement ? '—' : montant(totalDu),
+              sous: 'Sur la sélection courante',
+              ton: totalDu > 0 ? 'rouge' : 'teal',
+            },
+            {
+              label: 'Foyers à jour',
+              valeur: chargement ? '—' : nombre(nbAJour),
+              sous: total > 0 ? `${Math.round((nbAJour / total) * 100)} % de la sélection` : '—',
+              ton: 'teal',
+            },
+            {
+              label: 'Foyers en dette',
+              valeur: chargement ? '—' : nombre(nbRetard),
+              sous: 'Abonnement non soldé',
+              ton: nbRetard > 0 ? 'or' : 'defaut',
+            },
+            {
+              label: 'Sans abonnement',
+              valeur: chargement ? '—' : nombre(nbSans),
+              sous: 'À souscrire',
+              ton: nbSans > 0 ? 'rouge' : 'defaut',
+            },
+          ]}
+        />
       </div>
 
       <div className="zone-impression">
-        <div className="entete-impression" style={{ display: 'none', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Commune de Lambanyi - Registre des menages</h2>
-          <div style={{ fontSize: 12 }}>
-            Quartier : {filtreQuartier || 'tous'} &nbsp;|&nbsp;
-            Filtre : {filtrePaiement || 'tous'} &nbsp;|&nbsp;
-            Total du : {formatGnf(totalDu)} &nbsp;|&nbsp;
-            Edite le {new Date().toLocaleDateString('fr-FR')}
-          </div>
-        </div>
+        <EnteteImpression titre="Registre des ménages" contexte={contexteImpression} />
 
-        <div className="bg-white rounded-xl shadow overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr>
-                <th className="text-left px-4 py-3">Code</th>
-                <th className="text-left px-4 py-3">Quartier</th>
-                <th className="text-left px-4 py-3">Point de repere</th>
-                <th className="text-left px-4 py-3">Telephone</th>
-                <th className="text-left px-4 py-3">Type</th>
-                <th className="text-left px-4 py-3">Plan</th>
-                <th className="text-left px-4 py-3">Echeance</th>
-                <th className="text-left px-4 py-3">Paiement</th>
-                <th className="text-left px-4 py-3">Statut</th>
-                <th className="text-left px-4 py-3 no-print">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrees.length === 0 && (
-                <tr>
-                  <td colSpan="10" className="px-4 py-6 text-gray-500 text-center">
-                    Aucun menage trouve.
-                  </td>
-                </tr>
-              )}
-              {filtrees.map(function (m) {
+        <CarteListe
+          titre="Registre des ménages"
+          sousTitre={
+            chargement
+              ? 'Chargement…'
+              : `${nombre(total)} résultat${total > 1 ? 's' : ''}${total !== lignes.length ? ` · ${nombre(lignes.length)} au total` : ''}`
+          }
+          outils={
+            <div className="no-print flex flex-wrap items-center gap-2">
+              <Recherche
+                valeur={recherche}
+                onChange={setRecherche}
+                placeholder="Code, repère, téléphone…"
+              />
+              <SelectFiltre
+                valeur={filtreQuartier}
+                onChange={setFiltreQuartier}
+                ariaLabel="Filtrer par quartier"
+              >
+                <option value="">Tous les quartiers</option>
+                {quartiers.map(function (q) {
+                  return (
+                    <option key={q.id} value={q.nom}>
+                      {q.nom}
+                    </option>
+                  );
+                })}
+              </SelectFiltre>
+              <SelectFiltre
+                valeur={filtreStatut}
+                onChange={setFiltreStatut}
+                ariaLabel="Filtrer par statut"
+              >
+                <option value="">Tous les statuts</option>
+                <option value="actif">Actif</option>
+                <option value="suspendu">Suspendu</option>
+                <option value="resilie">Résilié</option>
+              </SelectFiltre>
+            </div>
+          }
+          chips={
+            <div className="no-print flex flex-wrap gap-1.5">
+              {FILTRES_PAIEMENT.map(function (f) {
                 return (
-                  <tr key={m.menage_id} className="border-t border-gray-100">
-                    <td className="px-4 py-3 font-medium text-gray-800">{m.code_menage || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.quartier || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.point_repere}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.telephone_contact}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.type_menage}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.plan_code || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{m.date_fin || '-'}</td>
-                    <td className="px-4 py-3">{badgePaiement(m)}</td>
-                    <td className="px-4 py-3">
-                      <span className={'text-xs px-3 py-1 rounded-full ' +
-                        (badgesStatut[m.statut_menage] || 'bg-gray-100 text-gray-600')}>
-                        {m.statut_menage}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 no-print">
-                      {!m.abonnement_id && (
-                        <button onClick={function () { ouvrirAbonnement(m); }}
-                          className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">
-                          Abonner
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <Chip
+                    key={f.code}
+                    actif={filtrePaiement === f.code}
+                    onClick={function () {
+                      setFiltrePaiement(f.code);
+                    }}
+                  >
+                    {f.label}
+                  </Chip>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          }
+          pied={
+            <PaginationBar
+              className="no-print"
+              page={page}
+              pages={pages}
+              total={total}
+              onChange={setPage}
+            />
+          }
+        >
+          <Tableau
+            colonnes={COLONNES}
+            vide={
+              chargement
+                ? 'Chargement du registre…'
+                : lignes.length === 0
+                  ? "Aucun ménage au registre — commencez par en inscrire un."
+                  : 'Aucun ménage ne correspond à ces filtres.'
+            }
+          >
+            {tranche.map(function (m, rang) {
+              return (
+                <Tr key={m.menage_id} rang={rang}>
+                  <Td mono fort>
+                    {m.code_menage || '—'}
+                  </Td>
+                  <Td>{m.quartier || '—'}</Td>
+                  <Td className="max-w-[220px] truncate">{m.point_repere || '—'}</Td>
+                  <Td mono>{m.telephone_contact || '—'}</Td>
+                  <Td>{libelleType(m.type_menage)}</Td>
+                  <Td mono>{m.plan_code || '—'}</Td>
+                  <Td mono>{dateCourte(m.date_fin)}</Td>
+                  <Td>
+                    <CelluleSolde m={m} />
+                  </Td>
+                  <Td>
+                    <BadgeStatut statut={m.statut_menage} />
+                  </Td>
+                  <Td align="right" className="no-print">
+                    {!m.abonnement_id ? (
+                      <button
+                        type="button"
+                        onClick={function () {
+                          ouvrirAbonnement(m);
+                        }}
+                        className={cn(
+                          'cursor-pointer rounded-lg border border-line2 px-2.5 py-1 text-[11px] font-semibold text-txt outline-none',
+                          'transition-colors hover:bg-panel2 focus-visible:ring-2 focus-visible:ring-blue',
+                        )}
+                      >
+                        Abonner
+                      </button>
+                    ) : null}
+                  </Td>
+                </Tr>
+              );
+            })}
+          </Tableau>
+        </CarteListe>
       </div>
+
+      {/* Nouveau ménage */}
+      <Modal
+        ouvert={modaleMenage}
+        onFermer={function () {
+          setModaleMenage(false);
+        }}
+        titre="Nouveau ménage"
+        sousTitre="Le code du foyer est généré automatiquement à partir du code du quartier."
+        taille="lg"
+        bloquerFermeture={enregistrement}
+        pied={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn
+              variant="ghost"
+              disabled={enregistrement}
+              onClick={function () {
+                setModaleMenage(false);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn variant="green" disabled={enregistrement} onClick={enregistrerMenage}>
+              {enregistrement ? 'Enregistrement…' : 'Enregistrer'}
+            </Btn>
+          </div>
+        }
+      >
+        {messageForm ? (
+          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+            {messageForm}
+          </p>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Quartier *
+            </span>
+            <Selecteur
+              value={form.quartier_id}
+              onChange={function (e) {
+                majChamp('quartier_id', e.target.value);
+              }}
+              className="w-full"
+            >
+              <option value="">— Choisir —</option>
+              {quartiers.map(function (q) {
+                return (
+                  <option key={q.id} value={q.id}>
+                    {q.nom}
+                  </option>
+                );
+              })}
+            </Selecteur>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Type de foyer
+            </span>
+            <Selecteur
+              value={form.type_menage}
+              onChange={function (e) {
+                majChamp('type_menage', e.target.value);
+              }}
+              className="w-full"
+            >
+              {TYPES_MENAGE.map(function (t) {
+                return (
+                  <option key={t.code} value={t.code}>
+                    {t.label}
+                  </option>
+                );
+              })}
+            </Selecteur>
+          </label>
+
+          <label className="block sm:col-span-2">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Point de repère *
+            </span>
+            <Champ
+              value={form.point_repere}
+              onChange={function (e) {
+                majChamp('point_repere', e.target.value);
+              }}
+              placeholder="Ex. près de la mosquée, 2ᵉ rue"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Téléphone *
+            </span>
+            <Champ
+              value={form.telephone_contact}
+              onChange={function (e) {
+                majChamp('telephone_contact', e.target.value);
+              }}
+              placeholder="6XX XX XX XX"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Nombre de personnes
+            </span>
+            <Champ
+              type="number"
+              min="1"
+              value={form.nb_personnes}
+              onChange={function (e) {
+                majChamp('nb_personnes', e.target.value);
+              }}
+              placeholder="Optionnel"
+            />
+          </label>
+        </div>
+      </Modal>
+
+      {/* Souscription d'abonnement */}
+      <Modal
+        ouvert={Boolean(cible)}
+        onFermer={function () {
+          setCible(null);
+        }}
+        titre="Souscrire un abonnement"
+        sousTitre={
+          cible ? `${cible.code_menage} · ${libelleType(cible.type_menage)} · ${cible.quartier}` : ''
+        }
+        bloquerFermeture={enregistrement}
+        pied={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn
+              variant="ghost"
+              disabled={enregistrement}
+              onClick={function () {
+                setCible(null);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn
+              variant="green"
+              disabled={enregistrement || !planChoisi}
+              onClick={creerAbonnement}
+            >
+              {enregistrement ? 'Création…' : "Créer l'abonnement"}
+            </Btn>
+          </div>
+        }
+      >
+        {messageForm ? (
+          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+            {messageForm}
+          </p>
+        ) : null}
+
+        <p className="mt-0 mb-4 text-[12.5px] text-muted">
+          Le premier mois devient dû à la création. L&apos;abonnement ne s&apos;active qu&apos;une fois
+          le paiement confirmé.
+        </p>
+
+        {plans.length === 0 ? (
+          <p className="m-0 text-[12.5px] text-muted2">
+            Aucun plan disponible pour ce type de foyer.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {plans.map(function (p) {
+              const choisi = planChoisi === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={function () {
+                    setPlanChoisi(p.id);
+                  }}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left outline-none transition-colors',
+                    'focus-visible:ring-2 focus-visible:ring-blue',
+                    choisi
+                      ? 'border-green bg-[color-mix(in_srgb,var(--lp-green)_12%,transparent)]'
+                      : 'border-line hover:border-line2 hover:bg-panel2',
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-2.5 shrink-0 rounded-full border-2 transition-colors',
+                      choisi ? 'border-green bg-green' : 'border-line2',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-mono text-[12.5px] font-bold text-txt">
+                      {p.code}
+                    </span>
+                    <span className="mt-0.5 block text-[11.5px] text-muted">
+                      {p.libelle} · {p.passages_par_semaine} passage
+                      {p.passages_par_semaine > 1 ? 's' : ''}/semaine
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[13px] font-bold text-txt tabular-nums">
+                    {montant(p.montant_gnf)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
