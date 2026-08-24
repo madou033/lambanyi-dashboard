@@ -84,8 +84,8 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Instrument Serif", Georgia, serif;
+  --font-sans: var(--font-dm-sans), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), Georgia, serif;
   --font-mono: "SFMono-Regular", Consolas, "Roboto Mono", ui-monospace, monospace;
 
   --color-bg: var(--lp-bg);
@@ -104,48 +104,53 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --color-blue: var(--lp-blue);
   --color-red: var(--lp-red);
   --color-violet: var(--lp-violet);
+  --color-encre: var(--lp-encre);
 }
 
 /* Sombre — thème par défaut */
 :root,
 [data-theme="dark"] {
-  --lp-bg:      #0c1a16;   /* fond d'application */
-  --lp-bg2:     #0a1613;   /* fond sidebar, champs en creux */
-  --lp-panel:   #12251f;   /* surface de panneau */
-  --lp-panel2:  #16302a;   /* surface active / survol */
-  --lp-line:    #22453a;   /* filet standard */
-  --lp-line2:   #2e5a4b;   /* filet appuyé, bordure de contrôle */
-  --lp-txt:     #eaf5ef;   /* texte principal */
-  --lp-muted:   #8dbca8;   /* texte secondaire */
-  --lp-muted2:  #5e8a76;   /* texte tertiaire, légendes */
-  --lp-green:   #1fa971;   /* ACCENT PRIMAIRE — marque, actif, CTA */
-  --lp-greend:  #168054;   /* accent enfoncé */
-  --lp-gold:    #e0a93b;   /* alerte, en attente, retard */
-  --lp-teal:    #16b39b;   /* validé, payé, en ligne */
-  --lp-blue:    #3e86b5;   /* information, tournées, neutre actif */
-  --lp-red:     #e0323f;   /* critique, impayé, signalement urgent */
-  --lp-violet:  #8c7bd8;   /* catégorie supplémentaire (graphes) */
+  --lp-bg: #0c1a16;
+  --lp-bg2: #0a1613;
+  --lp-panel: #12251f;
+  --lp-panel2: #16302a;
+  --lp-line: #22453a;
+  --lp-line2: #2e5a4b;
+  --lp-txt: #eaf5ef;
+  --lp-muted: #9cc9b4;
+  --lp-muted2: #7ba894;
+  --lp-green: #3ed393;
+  --lp-greend: #2bb87c;
+  --lp-gold: #e8b957;
+  --lp-teal: #35c9b1;
+  --lp-blue: #7bbbe4;
+  --lp-red: #ff7b85;
+  --lp-violet: #b3a6f0;
+  /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
+  --lp-encre: #05130e;
   color-scheme: dark;
 }
 
 /* Clair — même langage, contrastes inversés */
 [data-theme="light"] {
-  --lp-bg:      #eef4f0;
-  --lp-bg2:     #e3ece7;
-  --lp-panel:   #ffffff;
-  --lp-panel2:  #f4f9f6;
-  --lp-line:    #c9dbd2;
-  --lp-line2:   #a9c4b7;
-  --lp-txt:     #0c1a16;
-  --lp-muted:   #4f7565;
-  --lp-muted2:  #71947f;
-  --lp-green:   #0f8f5c;
-  --lp-greend:  #0a6b44;
-  --lp-gold:    #b8860b;
-  --lp-teal:    #0f8f7c;
-  --lp-blue:    #2a6f9a;
-  --lp-red:     #c62834;
-  --lp-violet:  #6a58bd;
+  --lp-bg: #eff3f1;
+  --lp-bg2: #e3e9e6;
+  --lp-panel: #ffffff;
+  --lp-panel2: #f3f7f5;
+  --lp-line: #d2dcd7;
+  --lp-line2: #aebdb6;
+  --lp-txt: #0c1a16;
+  --lp-muted: #41564c;
+  --lp-muted2: #566c62;
+  --lp-green: #076b41;
+  --lp-greend: #05502f;
+  --lp-gold: #7d5a05;
+  --lp-teal: #076358;
+  --lp-blue: #1d5b83;
+  --lp-red: #a81d29;
+  --lp-violet: #4f3d9c;
+  /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
+  --lp-encre: #ffffff;
   color-scheme: light;
 }
 ```
@@ -166,7 +171,35 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
 hors du bloc de tokens. Les couleurs Tailwind natives (`bg-green-700`, `text-gray-500`…) sont **bannies**
 du code applicatif — on n'utilise que les tokens (`bg-panel`, `text-muted`, `border-line`…).
 
-### 2.3 Teintes dérivées
+### 2.3 Lisibilité — la contrainte qui fixe les valeurs
+
+Les accents ne sont **pas** choisis pour leur éclat mais pour leur **lisibilité en tant que texte**.
+C'est la contrainte la plus dure : un `text-green` de 11 px sur `bg-panel` doit tenir **4.5:1**
+(seuil AA pour du texte courant, et l'interface descend à 10–11 px).
+
+Conséquence, les deux thèmes inversent la logique :
+
+| | Accents | Encre sur aplat (`--lp-encre`) |
+|---|---|---|
+| **Sombre** | clairs (`#3ed393`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
+| **Clair** | foncés (`#076b41`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
+
+D'où la règle : **tout texte posé sur un aplat d'accent utilise `text-encre`**, jamais une couleur
+en dur. `bg-green text-encre` est correct dans les deux thèmes ; `bg-green text-[#04231a]` devient
+illisible en clair, où le vert est foncé.
+
+Un pictogramme placé sur un aplat (le logo) se dessine en `currentColor` et son conteneur porte
+`text-encre` — il suit ainsi le thème sans duplication.
+
+**Les gris ne sont pas verts.** En clair, `muted` et `muted2` sont des ardoises à peine teintées
+(`#41564c`, `#566c62`), pas des verts pâles : une palette entièrement teintée délave l'écran et rend
+le texte secondaire illisible.
+
+**Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes : chaque jeton de texte
+contre les quatre surfaces, l'encre sur chaque aplat, et le texte de badge sur sa propre teinte à
+15 %. Il doit rendre **0 échec** — à relancer après toute retouche de palette.
+
+### 2.4 Teintes dérivées
 
 Toute variante translucide se fabrique en `color-mix`, jamais avec une opacité sur l'élément :
 

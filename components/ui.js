@@ -223,11 +223,13 @@ export function couleurTon(ton) {
 
 const VARIANTES_BTN = {
   ghost: 'border border-line2 bg-transparent text-txt hover:bg-panel2',
-  green: 'bg-green text-[#04231a]',
-  teal: 'bg-teal text-[#04231d]',
-  blue: 'bg-blue text-[#02141f]',
-  gold: 'bg-gold text-[#2a1e04]',
-  red: 'bg-red text-white',
+  // `text-encre` bascule avec le thème : les aplats d'accent sont clairs en
+  // sombre (encre foncée) et foncés en clair (encre blanche).
+  green: 'bg-green text-encre',
+  teal: 'bg-teal text-encre',
+  blue: 'bg-blue text-encre',
+  gold: 'bg-gold text-encre',
+  red: 'bg-red text-encre',
 };
 
 export function Btn({ variant = 'ghost', className, type = 'button', children, ...props }) {

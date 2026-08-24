@@ -41,7 +41,7 @@ function Badge({ info, className }) {
         info.pulse
           ? 'motion-safe:animate-[lp-badge-pop_.25s_ease-out,lp-pulse-red_1.6s_.25s_infinite]'
           : 'motion-safe:animate-[lp-badge-pop_.25s_ease-out]',
-        info.tone === 'rouge' ? 'bg-red text-white' : 'bg-gold text-[#1a1406]',
+        info.tone === 'rouge' ? 'bg-red text-encre' : 'bg-gold text-encre',
         className,
       )}
     >
@@ -100,7 +100,7 @@ function Rail({ badges, pathname, initiales }) {
   return (
     <div aria-hidden className="flex h-full flex-col items-center px-2">
       <div className="flex h-[60px] shrink-0 items-center">
-        <span className="grid size-[34px] place-items-center rounded-[10px] bg-green shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
+        <span className="grid size-[34px] place-items-center rounded-[10px] bg-green text-encre shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
           <IconMarque className="size-[18px]" />
         </span>
       </div>
@@ -243,7 +243,7 @@ function Panneau({
           le rail, seul le texte apparaît : le panneau se lit comme une
           croissance du rail, pas comme un calque distinct. */}
       <div className="flex h-[60px] shrink-0 items-center gap-2.5 px-2">
-        <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
+        <span className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green text-encre shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
           <IconMarque className="size-[18px]" />
         </span>
         <span className="min-w-0 flex-1">

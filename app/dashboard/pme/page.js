@@ -633,10 +633,10 @@ export default function PmePage() {
                   )}
                 >
                   {coche ? (
-                    <svg viewBox="0 0 12 12" className="size-2.5" fill="none">
+                    <svg viewBox="0 0 12 12" className="size-2.5 text-encre" fill="none">
                       <path
                         d="M2.5 6.2 4.8 8.5 9.5 3.8"
-                        stroke="#04231a"
+                        stroke="currentColor"
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"

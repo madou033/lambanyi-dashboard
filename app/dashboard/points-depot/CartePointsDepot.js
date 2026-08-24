@@ -33,7 +33,7 @@ function pin(couleur, taille) {
       <span style="display:block;filter:drop-shadow(0 3px 7px rgba(0,0,0,.45))">
         <svg width="${26 * t}" height="${34 * t}" viewBox="0 0 26 34" fill="none">
           <path d="M13 33.2C13 33.2 24.5 21.7 24.5 13A11.5 11.5 0 1 0 1.5 13c0 8.7 11.5 20.2 11.5 20.2z"
-                fill="${couleur}" stroke="#fff" stroke-width="1.8"/>
+                style="fill:${couleur}" stroke="#fff" stroke-width="1.8"/>
           <circle cx="13" cy="13" r="4.2" fill="#fff"/>
         </svg>
       </span>`,

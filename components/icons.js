@@ -28,21 +28,21 @@ export function IconMarque(props) {
     <svg className={props.className} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M6 4.5A9 9 0 0 1 20 9"
-        stroke="#fff"
+        stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
       />
-      <path d="M20 4.5V9h-4.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 4.5V9h-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path
         d="M18 19.5A9 9 0 0 1 4 15"
-        stroke="#fff"
+        stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
       />
-      <path d="M4 19.5V15h4.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 19.5V15h4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path
         d="M12 15.5c-2.5 0-4-1.6-4-3.8 0-2.4 2-4 4-5.2 2 1.2 4 2.8 4 5.2 0 2.2-1.5 3.8-4 3.8z"
-        fill="#fff"
+        fill="currentColor"
       />
     </svg>
   );

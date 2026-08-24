@@ -64,7 +64,7 @@ export default function LoginPage() {
         />
 
         <div className="relative flex items-center gap-2.5">
-          <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
+          <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green text-encre shadow-[0_4px_12px_color-mix(in_srgb,var(--lp-green)_35%,transparent)]">
             <IconMarque className="size-[18px]" />
           </div>
           <div>
@@ -108,7 +108,7 @@ export default function LoginPage() {
       <section className="flex items-center justify-center p-6">
         <div className="lp-rise w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green">
+            <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green text-encre">
               <IconMarque className="size-[18px]" />
             </div>
             <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Lambanyi Propre</p>
