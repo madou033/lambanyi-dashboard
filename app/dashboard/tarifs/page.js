@@ -1,179 +1,358 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import {
+  Badge,
+  BandeauErreur,
+  Bloc,
+  Btn,
+  Champ,
+  PageHeader,
+  cn,
+  montant,
+  nombre,
+} from '@/components/ui';
+import { BandeauMetriques } from '@/components/liste';
 
-const TYPES = ['residentiel', 'institution', 'commerce', 'industrie'];
+const TYPES = [
+  {
+    code: 'residentiel',
+    label: 'Résidentiel',
+    description: 'Foyers d’habitation',
+    accent: 'var(--lp-green)',
+  },
+  {
+    code: 'commerce',
+    label: 'Commerce',
+    description: 'Boutiques, restaurants, marchés',
+    accent: 'var(--lp-blue)',
+  },
+  {
+    code: 'institution',
+    label: 'Institution',
+    description: 'Écoles, administrations, santé',
+    accent: 'var(--lp-gold)',
+  },
+  {
+    code: 'industrie',
+    label: 'Industrie',
+    description: 'Ateliers et unités de production',
+    accent: 'var(--lp-violet)',
+  },
+];
 
-function formaterMontant(n) {
-  const s = String(n);
-  let sortie = '';
-  let compte = 0;
-  for (let i = s.length - 1; i >= 0; i--) {
-    sortie = s.charAt(i) + sortie;
-    compte = compte + 1;
-    if (compte % 3 === 0 && i > 0) { sortie = ' ' + sortie; }
+/* ------------------------------------------------------------------ */
+/* Carte de plan                                                       */
+/* ------------------------------------------------------------------ */
+
+function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
+  const [valeur, setValeur] = useState(String(plan.montant_gnf));
+  const [edite, setEdite] = useState(false);
+  const [montantVu, setMontantVu] = useState(plan.montant_gnf);
+
+  // Le champ se recale sur le montant enregistré, pendant le rendu.
+  if (montantVu !== plan.montant_gnf) {
+    setMontantVu(plan.montant_gnf);
+    setValeur(String(plan.montant_gnf));
+    setEdite(false);
   }
-  return sortie;
+
+  const modifie = edite && String(parseInt(valeur, 10) || 0) !== String(plan.montant_gnf);
+  const parJour = plan.duree_jours > 0 ? plan.montant_gnf / plan.duree_jours : 0;
+
+  return (
+    <article
+      className={cn(
+        'lp-rise flex flex-col rounded-xl border p-4 transition-colors',
+        plan.actif ? 'border-line bg-panel' : 'border-dashed border-line opacity-60',
+      )}
+      style={{ animationDelay: `${Math.min(rang, 8) * 40}ms` }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="size-2 shrink-0 rounded-sm"
+              style={{ background: plan.actif ? accent : 'var(--lp-line2)' }}
+            />
+            <span className="font-mono text-[12.5px] font-bold text-txt">{plan.code}</span>
+          </div>
+          <p className="m-0 mt-1.5 text-[12.5px] text-muted">{plan.libelle}</p>
+        </div>
+        <Badge ton={plan.actif ? 'teal' : 'muted'}>{plan.actif ? 'Actif' : 'Retiré'}</Badge>
+      </div>
+
+      <dl className="m-0 mt-3.5 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-line pt-3">
+        <div>
+          <dt className="text-[9.5px] tracking-[1.4px] text-muted2 uppercase">Passages</dt>
+          <dd className="m-0 mt-0.5 font-mono text-[13px] font-bold text-txt tabular-nums">
+            {plan.passages_par_semaine}/semaine
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[9.5px] tracking-[1.4px] text-muted2 uppercase">Durée</dt>
+          <dd className="m-0 mt-0.5 font-mono text-[13px] font-bold text-txt tabular-nums">
+            {plan.duree_jours} jours
+          </dd>
+        </div>
+      </dl>
+
+      <label className="mt-3.5 block">
+        <span className="mb-1.5 flex items-baseline justify-between text-[9.5px] tracking-[1.4px] text-muted uppercase">
+          Montant mensuel
+          <span className="font-mono tracking-normal text-muted2 normal-case">
+            ≈ {nombre(Math.round(parJour))} GNF/jour
+          </span>
+        </span>
+        <div className="flex gap-2">
+          <Champ
+            type="number"
+            min="0"
+            step="1000"
+            value={valeur}
+            onChange={function (e) {
+              setValeur(e.target.value);
+              setEdite(true);
+            }}
+            className="font-mono tabular-nums"
+          />
+          <Btn
+            variant={modifie ? 'green' : 'ghost'}
+            disabled={!modifie || occupe}
+            onClick={function () {
+              onEnregistrer(plan, valeur);
+            }}
+            className="shrink-0 px-3 py-2"
+          >
+            {occupe ? '…' : 'OK'}
+          </Btn>
+        </div>
+      </label>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
+        <span className="font-mono text-[15px] font-bold text-txt tabular-nums">
+          {montant(plan.montant_gnf)}
+        </span>
+        <button
+          type="button"
+          disabled={occupe}
+          onClick={function () {
+            onBasculer(plan);
+          }}
+          className="cursor-pointer rounded-lg border border-line2 px-2.5 py-1 text-[11px] font-semibold text-muted outline-none transition-colors hover:text-txt focus-visible:ring-2 focus-visible:ring-blue disabled:opacity-40"
+        >
+          {plan.actif ? 'Retirer' : 'Remettre'}
+        </button>
+      </div>
+    </article>
+  );
 }
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
 
 export default function TarifsPage() {
   const [plans, setPlans] = useState([]);
-  const [edition, setEdition] = useState({});
-  const [message, setMessage] = useState(null);
   const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState(null);
+  const [succes, setSucces] = useState(null);
+  const [occupe, setOccupe] = useState(false);
 
-  useEffect(function () { charger(); }, []);
-
-  async function charger() {
-    setChargement(true);
-    const { data } = await supabase
+  const charger = useCallback(async function () {
+    const { data, error } = await supabase
       .from('plans_tarifaires')
       .select('id, code, libelle, montant_gnf, passages_par_semaine, type_menage, duree_jours, actif')
       .order('type_menage')
       .order('passages_par_semaine');
-    setPlans(data || []);
-    setEdition({});
     setChargement(false);
-  }
-
-  function majMontant(id, valeur) {
-    const copie = Object.assign({}, edition);
-    copie[id] = valeur;
-    setEdition(copie);
-  }
-
-  async function enregistrer(plan) {
-    const brut = edition[plan.id];
-    const montant = parseInt(brut, 10);
-    if (!montant || montant <= 0) {
-      setMessage({ type: 'erreur', texte: 'Montant invalide' });
+    if (error) {
+      setErreur(`Impossible de charger la grille : ${error.message}`);
       return;
     }
+    setErreur(null);
+    setPlans(data || []);
+  }, []);
+
+  useEffect(
+    function () {
+      // Chargement initial. React déconseille de déclencher un fetch depuis un
+      // effet ; la parade propre serait une couche de données (React Query ou
+      // Suspense), ce que ce chantier de design n'introduit pas. Les setState
+      // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      charger();
+    },
+    [charger],
+  );
+
+  const parType = useMemo(
+    function () {
+      const map = new Map(
+        TYPES.map(function (t) {
+          return [t.code, []];
+        }),
+      );
+      plans.forEach(function (p) {
+        if (!map.has(p.type_menage)) map.set(p.type_menage, []);
+        map.get(p.type_menage).push(p);
+      });
+      return map;
+    },
+    [plans],
+  );
+
+  const actifs = plans.filter(function (p) {
+    return p.actif;
+  });
+  const montants = actifs.map(function (p) {
+    return p.montant_gnf;
+  });
+
+  async function enregistrerMontant(plan, brut) {
+    const valeur = parseInt(brut, 10);
+    if (!valeur || valeur <= 0) {
+      setErreur('Le montant doit être un entier positif.');
+      return;
+    }
+    setOccupe(true);
+    setSucces(null);
     const { error } = await supabase
       .from('plans_tarifaires')
-      .update({ montant_gnf: montant })
+      .update({ montant_gnf: valeur })
       .eq('id', plan.id);
+    setOccupe(false);
     if (error) {
-      setMessage({ type: 'erreur', texte: error.message });
+      setErreur(`Mise à jour refusée : ${error.message}`);
       return;
     }
-    setMessage({ type: 'succes', texte: 'Tarif mis a jour : ' + plan.code });
+    setErreur(null);
+    setSucces(`${plan.code} passe à ${montant(valeur)}.`);
     charger();
   }
 
   async function basculerActif(plan) {
-    await supabase
+    setOccupe(true);
+    const { error } = await supabase
       .from('plans_tarifaires')
       .update({ actif: !plan.actif })
       .eq('id', plan.id);
+    setOccupe(false);
+    if (error) {
+      setErreur(`Mise à jour refusée : ${error.message}`);
+      return;
+    }
+    setErreur(null);
+    setSucces(`${plan.code} ${plan.actif ? 'retiré de' : 'remis dans'} la grille.`);
     charger();
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">Grille tarifaire</h2>
-          <p className="text-sm text-gray-500">
-            Abonnement mensuel par type de menage et nombre de passages par semaine.
-          </p>
-        </div>
+    <div className="w-full">
+      <PageHeader
+        kicker="Recouvrement · Grille"
+        titre="Tarifs"
+        sousTitre="Formules d'abonnement par type de foyer et fréquence de passage. Un tarif modifié ne s'applique qu'aux abonnements souscrits ensuite."
+        actions={
+          <Btn
+            variant="ghost"
+            onClick={function () {
+              window.print();
+            }}
+          >
+            Imprimer
+          </Btn>
+        }
+      />
+
+      <BandeauErreur message={erreur} onReessayer={charger} />
+
+      {succes ? (
+        <p className="lp-rise mt-4 mb-0 rounded-xl border border-[color-mix(in_srgb,var(--lp-teal)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-teal)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+          {succes}
+        </p>
+      ) : null}
+
+      <BandeauMetriques
+        metriques={[
+          {
+            label: 'Formules actives',
+            valeur: chargement ? '—' : nombre(actifs.length),
+            sous: `${nombre(plans.length - actifs.length)} retirée${plans.length - actifs.length > 1 ? 's' : ''}`,
+            ton: 'teal',
+          },
+          {
+            label: 'Tarif le plus bas',
+            valeur: chargement || montants.length === 0 ? '—' : montant(Math.min(...montants)),
+            sous: 'Par mois',
+          },
+          {
+            label: 'Tarif le plus haut',
+            valeur: chargement || montants.length === 0 ? '—' : montant(Math.max(...montants)),
+            sous: 'Par mois',
+          },
+          {
+            label: 'Types couverts',
+            valeur: chargement
+              ? '—'
+              : nombre(
+                  new Set(
+                    actifs.map(function (p) {
+                      return p.type_menage;
+                    }),
+                  ).size,
+                ),
+            sous: `Sur ${TYPES.length} au total`,
+          },
+        ]}
+      />
+
+      <div className="mt-8 flex flex-col gap-9">
+        {TYPES.map(function (t, i) {
+          const liste = parType.get(t.code) ?? [];
+          return (
+            <Bloc
+              key={t.code}
+              titre={t.label}
+              delai={100 + i * 40}
+              extra={
+                <span className="flex items-center gap-3">
+                  <span className="text-[11px] text-muted2">{t.description}</span>
+                  <span className="font-mono text-[10px] text-muted2 tabular-nums">
+                    {nombre(liste.length)} formule{liste.length > 1 ? 's' : ''}
+                  </span>
+                </span>
+              }
+            >
+              {chargement ? (
+                <p className="m-0 text-[12px] text-muted2">Chargement…</p>
+              ) : liste.length === 0 ? (
+                <p className="m-0 text-[12px] text-muted2">
+                  Aucune formule pour ce type de foyer — les abonnements y sont donc impossibles.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {liste.map(function (p, rang) {
+                    return (
+                      <CartePlan
+                        key={p.id}
+                        plan={p}
+                        accent={t.accent}
+                        rang={rang}
+                        occupe={occupe}
+                        onEnregistrer={enregistrerMontant}
+                        onBasculer={basculerActif}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </Bloc>
+          );
+        })}
       </div>
-
-      {message && (
-        <div className={
-          'mb-4 p-3 rounded text-sm ' +
-          (message.type === 'succes'
-            ? 'bg-green-50 text-green-700'
-            : 'bg-red-50 text-red-700')
-        }>
-          {message.texte}
-        </div>
-      )}
-
-      {chargement && (
-        <div className="bg-white rounded-xl shadow p-6 text-gray-500">Chargement...</div>
-      )}
-
-      {!chargement && TYPES.map(function (type) {
-        const lignes = plans.filter(function (p) { return p.type_menage === type; });
-        if (lignes.length === 0) { return null; }
-        return (
-          <div key={type} className="bg-white rounded-xl shadow overflow-x-auto mb-6">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-800 capitalize">{type}</h3>
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="text-left px-4 py-3">Code</th>
-                  <th className="text-left px-4 py-3">Passages / semaine</th>
-                  <th className="text-left px-4 py-3">Montant actuel</th>
-                  <th className="text-left px-4 py-3">Nouveau montant (GNF)</th>
-                  <th className="text-left px-4 py-3">Statut</th>
-                  <th className="text-left px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lignes.map(function (p) {
-                  const valeur = edition[p.id] !== undefined
-                    ? edition[p.id]
-                    : String(p.montant_gnf);
-                  const modifie = parseInt(valeur, 10) !== p.montant_gnf;
-                  return (
-                    <tr key={p.id} className="border-t border-gray-100">
-                      <td className="px-4 py-3 font-medium text-gray-800">{p.code}</td>
-                      <td className="px-4 py-3 text-gray-600">{p.passages_par_semaine}</td>
-                      <td className="px-4 py-3 text-gray-800">
-                        {formaterMontant(p.montant_gnf)} GNF
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          value={valeur}
-                          onChange={function (e) { majMontant(p.id, e.target.value); }}
-                          className="w-32 border border-gray-300 rounded-lg px-3 py-1.5"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={
-                          'text-xs px-3 py-1 rounded-full ' +
-                          (p.actif
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600')
-                        }>
-                          {p.actif ? 'actif' : 'desactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={function () { enregistrer(p); }}
-                          disabled={!modifie}
-                          className={
-                            'text-sm mr-3 ' +
-                            (modifie
-                              ? 'text-green-700 hover:underline'
-                              : 'text-gray-300 cursor-not-allowed')
-                          }
-                        >
-                          Enregistrer
-                        </button>
-                        <button
-                          onClick={function () { basculerActif(p); }}
-                          className="text-sm text-gray-600 hover:underline"
-                        >
-                          {p.actif ? 'Desactiver' : 'Reactiver'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
     </div>
   );
 }

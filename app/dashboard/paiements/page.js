@@ -1,351 +1,786 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Badge,
+  BadgeStatut,
+  BandeauErreur,
+  Btn,
+  Champ,
+  Chip,
+  Modal,
+  PageHeader,
+  PaginationBar,
+  Selecteur,
+  cn,
+  montant,
+  nombre,
+} from '@/components/ui';
+import {
+  BandeauMetriques,
+  CarteListe,
+  EnteteImpression,
+  Recherche,
+  SelectFiltre,
+  Tableau,
+  Td,
+  Tr,
+  usePagination,
+} from '@/components/liste';
+import { IconPlus, IconRecherche } from '@/components/icons';
 
-function formatGnf(v) {
-  if (v === null || v === undefined) return "-";
-  return Number(v).toLocaleString("fr-FR") + " GNF";
+const MODES = [
+  { code: 'especes', label: 'Espèces' },
+  { code: 'orange_money', label: 'Orange Money' },
+  { code: 'orange_money_mock', label: 'Orange Money (test)' },
+];
+
+const STATUTS = [
+  { code: '', label: 'Tous les statuts' },
+  { code: 'confirme', label: 'Confirmés' },
+  { code: 'en_attente', label: 'En attente' },
+  { code: 'initie', label: 'Initiés' },
+  { code: 'echoue', label: 'Échoués' },
+  { code: 'annule', label: 'Annulés' },
+];
+
+const COLONNES = [
+  { cle: 'date', label: 'Date' },
+  { cle: 'menage', label: 'Ménage' },
+  { cle: 'quartier', label: 'Quartier' },
+  { cle: 'plan', label: 'Plan' },
+  { cle: 'periode', label: 'Période couverte' },
+  { cle: 'mois', label: 'Mois', align: 'right' },
+  { cle: 'montant', label: 'Montant', align: 'right' },
+  { cle: 'penalite', label: 'Pénalité', align: 'right' },
+  { cle: 'mode', label: 'Mode' },
+  { cle: 'statut', label: 'Statut' },
+];
+
+function libelleMode(code) {
+  const m = MODES.find(function (x) {
+    return x.code === code;
+  });
+  return m ? m.label : String(code ?? '—').replaceAll('_', ' ');
 }
 
-export default function PaiementsPage() {
-  const [recherche, setRecherche] = useState("");
+function dateCourte(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Guichet d'encaissement                                              */
+/* ------------------------------------------------------------------ */
+
+function Guichet({ ouvert, onFermer, onEncaisse }) {
+  const [requete, setRequete] = useState('');
   const [resultats, setResultats] = useState([]);
+  const [cherche, setCherche] = useState(false);
   const [choisi, setChoisi] = useState(null);
   const [solde, setSolde] = useState(null);
   const [avance, setAvance] = useState(0);
   const [mois, setMois] = useState(1);
-  const [fournisseur, setFournisseur] = useState("especes");
-  const [reference, setReference] = useState("");
-  const [note, setNote] = useState("");
-  const [message, setMessage] = useState(null);
-  const [erreur, setErreur] = useState(null);
+  const [mode, setMode] = useState('especes');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
   const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState(null);
+  const [succes, setSucces] = useState(null);
 
-  const [liste, setListe] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [totalPen, setTotalPen] = useState(0);
-  const [quartiers, setQuartiers] = useState([]);
-  const [fQuartier, setFQuartier] = useState("");
-  const [fStatut, setFStatut] = useState("");
-  const [fMode, setFMode] = useState("");
-  const [fDu, setFDu] = useState("");
-  const [fAu, setFAu] = useState("");
+  const [ouvertVu, setOuvertVu] = useState(ouvert);
 
-  function parametres() {
-    const p = new URLSearchParams();
-    if (fQuartier) p.set("quartier", fQuartier);
-    if (fStatut) p.set("statut", fStatut);
-    if (fMode) p.set("fournisseur", fMode);
-    if (fDu) p.set("du", fDu);
-    if (fAu) p.set("au", fAu);
-    return p;
+  // Remise à zéro à la fermeture — le guichet doit toujours rouvrir vierge.
+  // Ajustement pendant le rendu : un effet enchaînerait un rendu de plus.
+  if (ouvert !== ouvertVu) {
+    setOuvertVu(ouvert);
+    if (!ouvert) {
+      setRequete('');
+      setResultats([]);
+      setChoisi(null);
+      setSolde(null);
+      setErreur(null);
+      setSucces(null);
+      setReference('');
+      setNote('');
+    }
   }
 
-  function chargerListe() {
-    const p = parametres();
-    p.set("mode", "recents");
-    p.set("limite", "200");
-    fetch("/api/paiements?" + p.toString())
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        setListe(j.data || []);
-        setTotal(j.total || 0);
-        setTotalPen(j.total_penalite || 0);
-      });
-  }
-
-  useEffect(function () {
-    fetch("/api/paiements?mode=quartiers")
-      .then(function (r) { return r.json(); })
-      .then(function (j) { setQuartiers(j.data || []); });
-    chargerListe();
-  }, []);
-
-  function exporter() {
-    const p = parametres();
-    p.set("mode", "export");
-    window.location.href = "/api/paiements?" + p.toString();
-  }
-
-  function reinitialiser() {
-    setFQuartier(""); setFStatut(""); setFMode(""); setFDu(""); setFAu("");
-    setTimeout(chargerListe, 0);
-  }
-
-  function lancerRecherche() {
+  async function chercher() {
+    if (requete.trim().length < 2) return;
+    setCherche(true);
     setErreur(null);
-    fetch("/api/paiements?mode=recherche&q=" + encodeURIComponent(recherche))
-      .then(function (r) { return r.json(); })
-      .then(function (j) { setResultats(j.data || []); });
+    try {
+      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(requete)}`);
+      if (!r.ok) throw new Error();
+      const j = await r.json();
+      setResultats(j.data || []);
+    } catch {
+      setErreur('Le service de recherche est injoignable.');
+    }
+    setCherche(false);
   }
 
-  function selectionner(m) {
+  async function selectionner(m) {
     setChoisi(m);
     setResultats([]);
-    setMessage(null);
     setErreur(null);
-    if (!m.abonnement_id) { setSolde(null); return; }
-    fetch("/api/paiements?mode=solde&abonnement_id=" + m.abonnement_id)
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        setSolde(j.data);
-        setAvance(j.avance_mois_max || 0);
-        setMois(j.data && j.data.mois_dus > 0 ? j.data.mois_dus : 1);
-      });
+    setSucces(null);
+    if (!m.abonnement_id) {
+      setSolde(null);
+      return;
+    }
+    try {
+      const r = await fetch(`/api/paiements?mode=solde&abonnement_id=${m.abonnement_id}`);
+      const j = await r.json();
+      setSolde(j.data);
+      setAvance(j.avance_mois_max || 0);
+      setMois(j.data && j.data.mois_dus > 0 ? j.data.mois_dus : 1);
+    } catch {
+      setErreur("Impossible de lire le solde de l'abonnement.");
+    }
   }
 
-  function enregistrer() {
-    setOccupe(true); setMessage(null); setErreur(null);
-    fetch("/api/paiements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        abonnement_id: choisi.abonnement_id,
-        mois: mois,
-        fournisseur: fournisseur,
-        reference_externe: reference,
-        note: note
-      })
-    })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (res) {
-        setOccupe(false);
-        if (!res.ok) { setErreur(res.j.error); return; }
-        setMessage("Paiement enregistre : " + formatGnf(res.j.montant) +
-          (res.j.penalite > 0 ? " + penalite " + formatGnf(res.j.penalite) : ""));
-        setReference(""); setNote("");
-        selectionner(choisi);
-        chargerListe();
-      })
-      .catch(function () { setOccupe(false); setErreur("Erreur reseau"); });
+  async function enregistrer() {
+    setOccupe(true);
+    setErreur(null);
+    setSucces(null);
+    try {
+      const r = await fetch('/api/paiements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          abonnement_id: choisi.abonnement_id,
+          mois,
+          fournisseur: mode,
+          reference_externe: reference,
+          note,
+        }),
+      });
+      const j = await r.json().catch(function () {
+        return {};
+      });
+      setOccupe(false);
+      if (!r.ok) {
+        setErreur(j.error || "Le paiement n'a pas pu être enregistré.");
+        return;
+      }
+      setSucces(
+        `Encaissé : ${montant(j.montant)}${j.penalite > 0 ? ` + ${montant(j.penalite)} de pénalité` : ''}`,
+      );
+      setReference('');
+      setNote('');
+      selectionner(choisi);
+      onEncaisse();
+    } catch {
+      setOccupe(false);
+      setErreur('Erreur réseau.');
+    }
   }
 
   const maxMois = solde ? solde.mois_dus + avance : 1;
-  const totalAffiche = solde ? mois * solde.montant_mensuel : 0;
-  const penAffiche = solde && solde.mois_dus > 0
-    ? Math.round(solde.penalite_due / solde.mois_dus) * Math.min(mois, solde.mois_dus)
-    : 0;
-
-  const champ = { padding: 8, border: "1px solid #ccc", borderRadius: 6 };
-  const btn = { padding: "8px 14px", border: 0, borderRadius: 6, color: "#fff", cursor: "pointer" };
+  const totalMontant = solde ? mois * solde.montant_mensuel : 0;
+  const totalPenalite =
+    solde && solde.mois_dus > 0
+      ? Math.round(solde.penalite_due / solde.mois_dus) * Math.min(mois, solde.mois_dus)
+      : 0;
 
   return (
-    <div style={{ padding: 24 }}>
-      <div className="no-print">
-        <h1 style={{ fontSize: 24, fontWeight: 600 }}>Paiements</h1>
-        <p style={{ color: "#666", marginBottom: 20 }}>
-          Encaissement des abonnements. Un mois entier par tranche.
+    <Modal
+      ouvert={ouvert}
+      onFermer={onFermer}
+      titre="Guichet d'encaissement"
+      sousTitre="Un mois entier par tranche. La pénalité de retard est calculée automatiquement."
+      taille="lg"
+      bloquerFermeture={occupe}
+      pied={
+        choisi && solde ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="font-mono text-[13px] font-bold text-txt tabular-nums">
+              {montant(totalMontant + totalPenalite)}
+              {totalPenalite > 0 ? (
+                <span className="ml-2 text-[11px] font-normal text-gold">
+                  dont {montant(totalPenalite)} de pénalité
+                </span>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Btn
+                variant="ghost"
+                disabled={occupe}
+                onClick={function () {
+                  setChoisi(null);
+                  setSolde(null);
+                }}
+              >
+                Changer de ménage
+              </Btn>
+              <Btn variant="green" disabled={occupe || mois < 1} onClick={enregistrer}>
+                {occupe ? 'Encaissement…' : 'Encaisser'}
+              </Btn>
+            </div>
+          </div>
+        ) : null
+      }
+    >
+      {erreur ? (
+        <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+          {erreur}
         </p>
+      ) : null}
+      {succes ? (
+        <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-teal)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-teal)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
+          {succes}
+        </p>
+      ) : null}
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <input value={recherche}
-            onChange={function (e) { setRecherche(e.target.value); }}
-            onKeyDown={function (e) { if (e.key === "Enter") lancerRecherche(); }}
-            placeholder="Code LP, telephone ou point de repere"
-            style={{ flex: 1, padding: 10, border: "1px solid #ccc", borderRadius: 6 }} />
-          <button onClick={lancerRecherche} style={Object.assign({}, btn, { background: "#16a34a", padding: "10px 18px" })}>
-            Rechercher
-          </button>
-        </div>
+      {!choisi ? (
+        <>
+          <div className="flex gap-2">
+            <label className="relative flex-1">
+              <span className="sr-only">Rechercher un ménage</span>
+              <IconRecherche className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted2" />
+              <input
+                autoFocus
+                value={requete}
+                onChange={function (e) {
+                  setRequete(e.target.value);
+                }}
+                onKeyDown={function (e) {
+                  if (e.key === 'Enter') chercher();
+                }}
+                placeholder="Code ménage, téléphone ou point de repère…"
+                className="w-full rounded-xl border border-line bg-bg2 py-2.5 pr-3 pl-9 text-[13px] text-txt outline-none placeholder:text-muted2 focus:border-line2 focus:ring-2 focus:ring-blue/30"
+              />
+            </label>
+            <Btn variant="green" onClick={chercher} disabled={requete.trim().length < 2}>
+              {cherche ? 'Recherche…' : 'Chercher'}
+            </Btn>
+          </div>
 
-        {resultats.length > 0 && (
-          <div style={{ border: "1px solid #eee", borderRadius: 6, marginBottom: 16 }}>
-            {resultats.map(function (m) {
-              return (
-                <div key={m.menage_id} onClick={function () { selectionner(m); }}
-                  style={{ padding: 10, borderBottom: "1px solid #f2f2f2", cursor: "pointer" }}>
-                  <b>{m.code_menage || "-"}</b> &nbsp; {m.point_repere} &nbsp;
-                  <span style={{ color: "#888" }}>{m.quartier}</span> &nbsp;
-                  <span style={{ color: m.est_solde ? "#16a34a" : "#dc2626" }}>
-                    {m.est_solde ? "a jour" : "en retard"}
+          {resultats.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-2">
+              {resultats.map(function (m) {
+                return (
+                  <button
+                    key={m.menage_id}
+                    type="button"
+                    onClick={function () {
+                      selectionner(m);
+                    }}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-line px-4 py-3 text-left outline-none transition-colors hover:border-line2 hover:bg-panel2 focus-visible:ring-2 focus-visible:ring-blue"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[12.5px] font-bold text-txt">
+                        {m.code_menage}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11.5px] text-muted">
+                        {m.quartier} · {m.point_repere}
+                      </span>
+                    </span>
+                    {!m.abonnement_id ? (
+                      <Badge ton="muted">Sans abonnement</Badge>
+                    ) : m.est_solde ? (
+                      <Badge ton="teal">À jour</Badge>
+                    ) : (
+                      <Badge ton="rouge">{montant(m.total_du)}</Badge>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : requete.trim().length >= 2 && !cherche ? (
+            <p className="mt-6 text-center text-[12.5px] text-muted2">
+              Aucun ménage ne correspond à « {requete} ».
+            </p>
+          ) : (
+            <p className="mt-6 text-center text-[12.5px] text-muted2">
+              Cherchez le foyer par son code, son téléphone ou son repère.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-panel2 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-[13px] font-bold text-txt">{choisi.code_menage}</div>
+              <div className="mt-0.5 truncate text-[11.5px] text-muted">
+                {choisi.quartier} · {choisi.point_repere}
+              </div>
+            </div>
+            {choisi.telephone_contact ? (
+              <span className="font-mono text-[11.5px] text-muted2">
+                {choisi.telephone_contact}
+              </span>
+            ) : null}
+          </div>
+
+          {!choisi.abonnement_id ? (
+            <p className="m-0 text-[12.5px] text-muted2">
+              Ce foyer n&apos;a pas d&apos;abonnement — souscrivez-en un depuis le registre des ménages
+              avant d&apos;encaisser.
+            </p>
+          ) : !solde ? (
+            <p className="m-0 text-[12.5px] text-muted2">Lecture du solde…</p>
+          ) : (
+            <>
+              <div className="mb-5 grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: 'Mois dus',
+                    valeur: nombre(solde.mois_dus),
+                    ton: solde.mois_dus > 0 ? 'text-red' : 'text-teal',
+                  },
+                  { label: 'Mensualité', valeur: montant(solde.montant_mensuel), ton: 'text-txt' },
+                  {
+                    label: 'Pénalité due',
+                    valeur: montant(solde.penalite_due),
+                    ton: solde.penalite_due > 0 ? 'text-gold' : 'text-muted2',
+                  },
+                ].map(function (k) {
+                  return (
+                    <div
+                      key={k.label}
+                      className="rounded-xl border border-line px-3.5 py-2.5"
+                    >
+                      <div className={cn('font-mono text-[17px] font-bold tabular-nums', k.ton)}>
+                        {k.valeur}
+                      </div>
+                      <div className="mt-1 text-[9.5px] tracking-wide text-muted uppercase">
+                        {k.label}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <label className="mb-4 block">
+                <span className="mb-2 flex items-baseline justify-between text-[10px] tracking-[1.6px] text-muted uppercase">
+                  Mois à encaisser
+                  <span className="font-mono text-[11px] tracking-normal text-muted2 normal-case">
+                    max {maxMois}
+                    {avance > 0 ? ` · ${avance} mois d'avance autorisés` : ''}
+                  </span>
+                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="1"
+                    max={Math.max(1, maxMois)}
+                    value={mois}
+                    onChange={function (e) {
+                      setMois(parseInt(e.target.value, 10));
+                    }}
+                    className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-line accent-[var(--lp-green)]"
+                  />
+                  <span className="w-10 shrink-0 text-right font-mono text-[17px] font-bold text-txt tabular-nums">
+                    {mois}
                   </span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              </label>
 
-        {message && (
-          <div style={{ padding: 12, background: "#ecfdf5", color: "#065f46", borderRadius: 6, marginBottom: 12 }}>
-            {message}
-          </div>
-        )}
-        {erreur && (
-          <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b", borderRadius: 6, marginBottom: 12 }}>
-            {erreur}
-          </div>
-        )}
-
-        {choisi && !choisi.abonnement_id && (
-          <div style={{ padding: 12, background: "#fffbeb", color: "#92400e", borderRadius: 6 }}>
-            Ce menage na pas encore abonnement actif. Creez-le avant tout encaissement.
-          </div>
-        )}
-
-        {choisi && solde && (
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 24 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600 }}>
-              {choisi.code_menage} - {choisi.point_repere}
-            </h2>
-            <div style={{ display: "flex", gap: 32, margin: "12px 0", flexWrap: "wrap" }}>
-              <div><div style={{ color: "#888", fontSize: 12 }}>Echeance</div><div>{solde.date_fin || "-"}</div></div>
-              <div><div style={{ color: "#888", fontSize: 12 }}>Retard</div><div>{solde.jours_retard} jours</div></div>
-              <div><div style={{ color: "#888", fontSize: 12 }}>Mois dus</div><div>{solde.mois_dus}</div></div>
-              <div><div style={{ color: "#888", fontSize: 12 }}>Tarif mensuel</div><div>{formatGnf(solde.montant_mensuel)}</div></div>
-              <div><div style={{ color: "#888", fontSize: 12 }}>Total du</div>
-                <div style={{ fontWeight: 600, color: solde.est_solde ? "#16a34a" : "#dc2626" }}>
-                  {solde.est_solde ? "Solde" : formatGnf(solde.total_du)}
-                </div></div>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div>
-                <div style={{ fontSize: 12, color: "#888" }}>Mois a regler (max {maxMois})</div>
-                <input type="number" min="1" max={maxMois} value={mois}
-                  onChange={function (e) { setMois(parseInt(e.target.value, 10) || 1); }}
-                  style={Object.assign({}, champ, { width: 90 })} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "#888" }}>Mode</div>
-                <select value={fournisseur} onChange={function (e) { setFournisseur(e.target.value); }} style={champ}>
-                  <option value="especes">Especes</option>
-                  <option value="orange_money">Orange Money</option>
-                  <option value="orange_money_mock">Orange Money (test)</option>
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "#888" }}>Reference</div>
-                <input value={reference} onChange={function (e) { setReference(e.target.value); }} style={champ} />
-              </div>
-              <div style={{ flex: 1, minWidth: 180 }}>
-                <div style={{ fontSize: 12, color: "#888" }}>Note</div>
-                <input value={note} onChange={function (e) { setNote(e.target.value); }}
-                  style={Object.assign({}, champ, { width: "100%" })} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>
-                A encaisser : {formatGnf(totalAffiche + penAffiche)}
-                {penAffiche > 0 && (
-                  <span style={{ fontSize: 13, fontWeight: 400, color: "#888" }}>
-                    &nbsp;(dont penalite {formatGnf(penAffiche)})
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+                    Mode de règlement
                   </span>
-                )}
-              </div>
-              <button onClick={enregistrer} disabled={occupe || mois < 1 || mois > maxMois}
-                style={Object.assign({}, btn, {
-                  padding: "10px 20px",
-                  background: occupe || mois > maxMois ? "#9ca3af" : "#16a34a"
-                })}>
-                {occupe ? "Enregistrement..." : "Enregistrer le paiement"}
-              </button>
-            </div>
-          </div>
-        )}
+                  <Selecteur
+                    value={mode}
+                    onChange={function (e) {
+                      setMode(e.target.value);
+                    }}
+                    className="w-full"
+                  >
+                    {MODES.map(function (m) {
+                      return (
+                        <option key={m.code} value={m.code}>
+                          {m.label}
+                        </option>
+                      );
+                    })}
+                  </Selecteur>
+                </label>
 
-        <div style={{
-          display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
-          padding: 12, background: "#f9fafb", borderRadius: 8, marginBottom: 12
-        }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#888" }}>Quartier</div>
-            <select value={fQuartier} onChange={function (e) { setFQuartier(e.target.value); }} style={champ}>
-              <option value="">Tous</option>
-              {quartiers.map(function (q) { return <option key={q} value={q}>{q}</option>; })}
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#888" }}>Statut</div>
-            <select value={fStatut} onChange={function (e) { setFStatut(e.target.value); }} style={champ}>
-              <option value="">Tous</option>
-              <option value="confirme">Confirme</option>
-              <option value="en_attente">En attente</option>
-              <option value="initie">Initie</option>
-              <option value="echoue">Echoue</option>
-              <option value="rembourse">Rembourse</option>
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#888" }}>Mode</div>
-            <select value={fMode} onChange={function (e) { setFMode(e.target.value); }} style={champ}>
-              <option value="">Tous</option>
-              <option value="especes">Especes</option>
-              <option value="orange_money">Orange Money</option>
-              <option value="orange_money_mock">Orange Money (test)</option>
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#888" }}>Du</div>
-            <input type="date" value={fDu} onChange={function (e) { setFDu(e.target.value); }} style={champ} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#888" }}>Au</div>
-            <input type="date" value={fAu} onChange={function (e) { setFAu(e.target.value); }} style={champ} />
-          </div>
-          <button onClick={chargerListe} style={Object.assign({}, btn, { background: "#16a34a" })}>Filtrer</button>
-          <button onClick={reinitialiser} style={Object.assign({}, btn, { background: "#6b7280" })}>Reinitialiser</button>
-          <button onClick={exporter} style={Object.assign({}, btn, { background: "#0f766e" })}>Exporter CSV</button>
-          <button onClick={function () { window.print(); }} style={Object.assign({}, btn, { background: "#1d4ed8" })}>Imprimer</button>
-        </div>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+                    Référence
+                  </span>
+                  <Champ
+                    value={reference}
+                    onChange={function (e) {
+                      setReference(e.target.value);
+                    }}
+                    placeholder={mode === 'especes' ? 'Optionnel' : 'Transaction Orange Money'}
+                  />
+                </label>
+
+                <label className="block sm:col-span-2">
+                  <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+                    Note
+                  </span>
+                  <Champ
+                    value={note}
+                    onChange={function (e) {
+                      setNote(e.target.value);
+                    }}
+                    placeholder="Optionnel"
+                  />
+                </label>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
+export default function PaiementsPage() {
+  const [liste, setListe] = useState([]);
+  const [totaux, setTotaux] = useState({ montant: 0, penalite: 0 });
+  const [quartiers, setQuartiers] = useState([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState(null);
+  const [guichet, setGuichet] = useState(false);
+
+  const [fQuartier, setFQuartier] = useState('');
+  const [fStatut, setFStatut] = useState('');
+  const [fMode, setFMode] = useState('');
+  const [fDu, setFDu] = useState('');
+  const [fAu, setFAu] = useState('');
+  const [recherche, setRecherche] = useState('');
+
+  const parametres = useCallback(
+    function () {
+      const p = new URLSearchParams();
+      if (fQuartier) p.set('quartier', fQuartier);
+      if (fStatut) p.set('statut', fStatut);
+      if (fMode) p.set('fournisseur', fMode);
+      if (fDu) p.set('du', fDu);
+      if (fAu) p.set('au', fAu);
+      return p;
+    },
+    [fQuartier, fStatut, fMode, fDu, fAu],
+  );
+
+  const charger = useCallback(
+    async function () {
+      const p = parametres();
+      p.set('mode', 'recents');
+      p.set('limite', '200');
+      try {
+        const r = await fetch(`/api/paiements?${p.toString()}`);
+        if (!r.ok) throw new Error();
+        const j = await r.json();
+        setListe(j.data || []);
+        setTotaux({ montant: j.total || 0, penalite: j.total_penalite || 0 });
+        setErreur(null);
+      } catch {
+        setErreur(
+          "Le journal des paiements est injoignable — la clé de service Supabase n'est pas configurée.",
+        );
+      }
+      setChargement(false);
+    },
+    [parametres],
+  );
+
+  useEffect(
+    function () {
+      // Chargement initial. React déconseille de déclencher un fetch depuis un
+      // effet ; la parade propre serait une couche de données (React Query ou
+      // Suspense), ce que ce chantier de design n'introduit pas. Les setState
+      // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      charger();
+    },
+    [charger],
+  );
+
+  useEffect(function () {
+    fetch('/api/paiements?mode=quartiers')
+      .then(function (r) {
+        return r.ok ? r.json() : { data: [] };
+      })
+      .then(function (j) {
+        setQuartiers(j.data || []);
+      })
+      .catch(function () {
+        setQuartiers([]);
+      });
+  }, []);
+
+  const filtrees = useMemo(
+    function () {
+      const q = recherche.trim().toLowerCase();
+      if (!q) return liste;
+      return liste.filter(function (p) {
+        return `${p.code_menage ?? ''} ${p.telephone_contact ?? ''} ${p.reference_externe ?? ''}`
+          .toLowerCase()
+          .includes(q);
+      });
+    },
+    [liste, recherche],
+  );
+
+  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25);
+
+  const confirmes = filtrees.filter(function (p) {
+    return p.statut === 'confirme';
+  });
+  const enAttente = filtrees.filter(function (p) {
+    return p.statut === 'en_attente' || p.statut === 'initie';
+  }).length;
+  const moisRegles = confirmes.reduce(function (s, p) {
+    return s + Number(p.mois_regles || 0);
+  }, 0);
+
+  function exporter() {
+    const p = parametres();
+    p.set('mode', 'export');
+    window.location.href = `/api/paiements?${p.toString()}`;
+  }
+
+  function reinitialiser() {
+    setFQuartier('');
+    setFStatut('');
+    setFMode('');
+    setFDu('');
+    setFAu('');
+    setRecherche('');
+  }
+
+  const filtreActif = fQuartier || fStatut || fMode || fDu || fAu || recherche;
+
+  return (
+    <div className="w-full">
+      <div className="no-print">
+        <PageHeader
+          kicker="Recouvrement · Journal"
+          titre="Paiements"
+          sousTitre="Encaissements des abonnements, période couverte comprise. Chaque tranche règle un mois entier."
+          actions={
+            <>
+              {filtreActif ? (
+                <Btn variant="ghost" onClick={reinitialiser}>
+                  Réinitialiser
+                </Btn>
+              ) : null}
+              <Btn variant="ghost" onClick={exporter}>
+                Exporter
+              </Btn>
+              <Btn
+                variant="ghost"
+                onClick={function () {
+                  window.print();
+                }}
+              >
+                Imprimer
+              </Btn>
+              <Btn
+                variant="green"
+                onClick={function () {
+                  setGuichet(true);
+                }}
+              >
+                <IconPlus className="size-4" />
+                Encaisser
+              </Btn>
+            </>
+          }
+        />
+
+        <BandeauErreur message={erreur} onReessayer={charger} />
+
+        <BandeauMetriques
+          metriques={[
+            {
+              label: 'Encaissé',
+              valeur: chargement ? '—' : montant(totaux.montant),
+              sous: `${nombre(confirmes.length)} paiement${confirmes.length > 1 ? 's' : ''} confirmé${confirmes.length > 1 ? 's' : ''}`,
+              ton: 'teal',
+            },
+            {
+              label: 'Pénalités perçues',
+              valeur: chargement ? '—' : montant(totaux.penalite),
+              sous: 'Majorations de retard',
+              ton: totaux.penalite > 0 ? 'or' : 'defaut',
+            },
+            {
+              label: 'Mois réglés',
+              valeur: chargement ? '—' : nombre(moisRegles),
+              sous: 'Sur la sélection',
+            },
+            {
+              label: 'En attente',
+              valeur: chargement ? '—' : nombre(enAttente),
+              sous: enAttente > 0 ? 'À confirmer' : 'Rien en suspens',
+              ton: enAttente > 0 ? 'or' : 'defaut',
+            },
+          ]}
+        />
       </div>
 
       <div className="zone-impression">
-        <div className="entete-impression" style={{ display: "none", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Commune de Lambanyi - Journal des paiements</h2>
-          <div style={{ fontSize: 12 }}>
-            Quartier : {fQuartier || "tous"} &nbsp;|&nbsp;
-            Periode : {fDu || "debut"} au {fAu || "ce jour"} &nbsp;|&nbsp;
-            Edite le {new Date().toLocaleDateString("fr-FR")}
-          </div>
-        </div>
+        <EnteteImpression
+          titre="Journal des encaissements"
+          contexte={`${fQuartier || 'tous quartiers'} · ${montant(totaux.montant)} encaissés`}
+        />
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600 }}>Journal des paiements ({liste.length})</h2>
-          <div style={{ fontWeight: 600 }}>
-            Encaisse : {formatGnf(total)}
-            {totalPen > 0 && <span style={{ color: "#888", fontWeight: 400 }}> (dont penalites {formatGnf(totalPen)})</span>}
-          </div>
-        </div>
-
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
-              <th style={{ padding: 8 }}>Date</th>
-              <th style={{ padding: 8 }}>Code</th>
-              <th style={{ padding: 8 }}>Quartier</th>
-              <th style={{ padding: 8 }}>Montant</th>
-              <th style={{ padding: 8 }}>Penalite</th>
-              <th style={{ padding: 8 }}>Mois</th>
-              <th style={{ padding: 8 }}>Periode</th>
-              <th style={{ padding: 8 }}>Mode</th>
-              <th style={{ padding: 8 }}>Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            {liste.map(function (p) {
+        <CarteListe
+          titre="Journal des encaissements"
+          sousTitre={
+            chargement
+              ? 'Chargement…'
+              : `${nombre(total)} paiement${total > 1 ? 's' : ''} · 200 plus récents`
+          }
+          outils={
+            <div className="no-print flex flex-wrap items-center gap-2">
+              <Recherche
+                valeur={recherche}
+                onChange={setRecherche}
+                placeholder="Code, téléphone, réf.…"
+              />
+              <SelectFiltre
+                valeur={fQuartier}
+                onChange={setFQuartier}
+                ariaLabel="Filtrer par quartier"
+              >
+                <option value="">Tous les quartiers</option>
+                {quartiers.map(function (q) {
+                  return (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  );
+                })}
+              </SelectFiltre>
+              <SelectFiltre valeur={fMode} onChange={setFMode} ariaLabel="Filtrer par mode">
+                <option value="">Tous les modes</option>
+                {MODES.map(function (m) {
+                  return (
+                    <option key={m.code} value={m.code}>
+                      {m.label}
+                    </option>
+                  );
+                })}
+              </SelectFiltre>
+            </div>
+          }
+          chips={
+            <div className="no-print flex flex-wrap items-center gap-1.5">
+              {STATUTS.map(function (s) {
+                return (
+                  <Chip
+                    key={s.code || 'tous'}
+                    actif={fStatut === s.code}
+                    onClick={function () {
+                      setFStatut(s.code);
+                    }}
+                  >
+                    {s.label}
+                  </Chip>
+                );
+              })}
+              <span className="ml-2 flex items-center gap-2 text-[11px] text-muted2">
+                <span>Du</span>
+                <input
+                  type="date"
+                  value={fDu}
+                  onChange={function (e) {
+                    setFDu(e.target.value);
+                  }}
+                  className="rounded-lg border border-line bg-bg2 px-2 py-1 font-mono text-[11px] text-txt outline-none focus:ring-2 focus:ring-blue/30"
+                />
+                <span>au</span>
+                <input
+                  type="date"
+                  value={fAu}
+                  onChange={function (e) {
+                    setFAu(e.target.value);
+                  }}
+                  className="rounded-lg border border-line bg-bg2 px-2 py-1 font-mono text-[11px] text-txt outline-none focus:ring-2 focus:ring-blue/30"
+                />
+              </span>
+            </div>
+          }
+          pied={
+            <PaginationBar
+              className="no-print"
+              page={page}
+              pages={pages}
+              total={total}
+              onChange={setPage}
+            />
+          }
+        >
+          <Tableau
+            colonnes={COLONNES}
+            vide={
+              chargement
+                ? 'Chargement du journal…'
+                : erreur
+                  ? 'Journal indisponible.'
+                  : liste.length === 0
+                    ? "Aucun encaissement — utilisez le guichet pour enregistrer le premier."
+                    : 'Aucun paiement ne correspond à ces filtres.'
+            }
+          >
+            {tranche.map(function (p, rang) {
               return (
-                <tr key={p.id} style={{ borderBottom: "1px solid #f2f2f2" }}>
-                  <td style={{ padding: 8 }}>{new Date(p.created_at).toLocaleDateString("fr-FR")}</td>
-                  <td style={{ padding: 8 }}>{p.code_menage}</td>
-                  <td style={{ padding: 8 }}>{p.quartier}</td>
-                  <td style={{ padding: 8 }}>{formatGnf(p.montant_gnf)}</td>
-                  <td style={{ padding: 8 }}>{p.penalite_gnf > 0 ? formatGnf(p.penalite_gnf) : "-"}</td>
-                  <td style={{ padding: 8 }}>{p.mois_regles || "-"}</td>
-                  <td style={{ padding: 8 }}>
-                    {p.periode_debut ? p.periode_debut + " au " + p.periode_fin : "-"}
-                  </td>
-                  <td style={{ padding: 8 }}>{p.fournisseur}</td>
-                  <td style={{ padding: 8 }}>{p.statut}</td>
-                </tr>
+                <Tr key={p.id} rang={rang}>
+                  <Td mono>{dateCourte(p.created_at)}</Td>
+                  <Td mono fort>
+                    {p.code_menage || '—'}
+                  </Td>
+                  <Td>{p.quartier || '—'}</Td>
+                  <Td mono>{p.plan_code || '—'}</Td>
+                  <Td mono className="whitespace-nowrap">
+                    {p.periode_debut ? (
+                      <>
+                        {dateCourte(p.periode_debut)}
+                        <span className="mx-1 text-muted2">→</span>
+                        {dateCourte(p.periode_fin)}
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
+                  <Td align="right" mono>
+                    {p.mois_regles || '—'}
+                  </Td>
+                  <Td align="right" mono fort>
+                    {montant(p.montant_gnf)}
+                  </Td>
+                  <Td align="right" mono className={p.penalite_gnf > 0 ? 'text-gold' : undefined}>
+                    {p.penalite_gnf > 0 ? montant(p.penalite_gnf) : '—'}
+                  </Td>
+                  <Td>{libelleMode(p.fournisseur)}</Td>
+                  <Td>
+                    <BadgeStatut statut={p.statut} />
+                  </Td>
+                </Tr>
               );
             })}
-            {liste.length === 0 && (
-              <tr><td colSpan="9" style={{ padding: 16, color: "#888" }}>Aucun paiement pour ces criteres.</td></tr>
-            )}
-          </tbody>
-        </table>
+          </Tableau>
+        </CarteListe>
       </div>
+
+      <Guichet
+        ouvert={guichet}
+        onFermer={function () {
+          setGuichet(false);
+        }}
+        onEncaisse={charger}
+      />
     </div>
   );
 }
