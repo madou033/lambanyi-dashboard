@@ -251,6 +251,14 @@ export function IconPlus(props) {
   );
 }
 
+export function IconRetour(props) {
+  return (
+    <Svg className={props.className}>
+      <path d="M15 6 9 12l6 6" />
+    </Svg>
+  );
+}
+
 export function IconHorloge(props) {
   return (
     <Svg className={props.className}>
