@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useEtatListe } from '@/lib/useEtatListe';
 import {
   BadgeStatut,
   BandeauErreur,
@@ -30,6 +31,7 @@ import {
   usePagination,
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
+import { ModaleAbonnement } from '@/components/ModaleAbonnement';
 
 const TYPES_MENAGE = [
   { code: 'residentiel', label: 'Résidentiel' },
@@ -44,6 +46,14 @@ const FILTRES_PAIEMENT = [
   { code: 'en_retard', label: 'En dette' },
   { code: 'sans', label: 'Sans abonnement' },
 ];
+
+const SCHEMA_LISTE = {
+  q: { defaut: '', type: 'string' },
+  quartier: { defaut: '', type: 'string' },
+  statut: { defaut: '', type: 'string' },
+  paiement: { defaut: 'tous', type: 'string' },
+  page: { defaut: 1, type: 'int' },
+};
 
 const FORM_VIDE = {
   quartier_id: '',
@@ -94,22 +104,22 @@ function CelluleSolde({ m }) {
   );
 }
 
-export default function MenagesPage() {
+function MenagesPage() {
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  const [recherche, setRecherche] = useState('');
-  const [filtreQuartier, setFiltreQuartier] = useState('');
-  const [filtreStatut, setFiltreStatut] = useState('');
-  const [filtrePaiement, setFiltrePaiement] = useState('tous');
+  const [etat, maj] = useEtatListe(SCHEMA_LISTE);
+  const recherche = etat.q;
+  const filtreQuartier = etat.quartier;
+  const filtreStatut = etat.statut;
+  const filtrePaiement = etat.paiement;
+  const [rechercheSaisie, setRechercheSaisie] = useState(etat.q);
 
   const [modaleMenage, setModaleMenage] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
   const [cible, setCible] = useState(null);
-  const [plans, setPlans] = useState([]);
-  const [planChoisi, setPlanChoisi] = useState('');
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
 
@@ -140,6 +150,19 @@ export default function MenagesPage() {
     [charger],
   );
 
+  useEffect(
+    function () {
+      if (rechercheSaisie === etat.q) return undefined;
+      const minuteur = window.setTimeout(function () {
+        maj({ q: rechercheSaisie });
+      }, 300);
+      return function () {
+        window.clearTimeout(minuteur);
+      };
+    },
+    [etat.q, maj, rechercheSaisie],
+  );
+
   const filtrees = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
@@ -158,18 +181,23 @@ export default function MenagesPage() {
     [lignes, recherche, filtreQuartier, filtreStatut, filtrePaiement],
   );
 
-  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25);
+  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25, {
+    page: etat.page,
+    onChange: function (p) {
+      maj({ page: p });
+    },
+  });
 
-  const totalDu = filtrees.reduce(function (s, m) {
+  const totalDu = lignes.reduce(function (s, m) {
     return s + Number(m.total_du || 0);
   }, 0);
-  const nbRetard = filtrees.filter(function (m) {
+  const nbRetard = lignes.filter(function (m) {
     return m.abonnement_id && m.est_solde === false;
   }).length;
-  const nbSans = filtrees.filter(function (m) {
+  const nbSans = lignes.filter(function (m) {
     return !m.abonnement_id;
   }).length;
-  const nbAJour = filtrees.filter(function (m) {
+  const nbAJour = lignes.filter(function (m) {
     return m.est_solde === true;
   }).length;
 
@@ -207,47 +235,8 @@ export default function MenagesPage() {
     charger();
   }
 
-  async function ouvrirAbonnement(m) {
+  function ouvrirAbonnement(m) {
     setCible(m);
-    setPlanChoisi('');
-    setMessageForm(null);
-    setPlans([]);
-    try {
-      const r = await fetch(`/api/abonnements?type_menage=${encodeURIComponent(m.type_menage)}`);
-      if (!r.ok) throw new Error('Service indisponible');
-      const j = await r.json();
-      setPlans(j.data || []);
-    } catch {
-      setMessageForm("Impossible de charger les plans tarifaires — vérifiez la configuration du serveur.");
-    }
-  }
-
-  async function creerAbonnement() {
-    if (!planChoisi) {
-      setMessageForm('Choisissez un plan.');
-      return;
-    }
-    setEnregistrement(true);
-    try {
-      const r = await fetch('/api/abonnements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menage_id: cible.menage_id, plan_id: planChoisi }),
-      });
-      const j = await r.json().catch(function () {
-        return {};
-      });
-      setEnregistrement(false);
-      if (!r.ok) {
-        setMessageForm(j.error || "L'abonnement n'a pas pu être créé.");
-        return;
-      }
-      setCible(null);
-      charger();
-    } catch {
-      setEnregistrement(false);
-      setMessageForm('Erreur réseau.');
-    }
   }
 
   function exporter() {
@@ -335,26 +324,45 @@ export default function MenagesPage() {
             {
               label: 'Créances ouvertes',
               valeur: chargement ? '—' : montant(totalDu),
-              sous: 'Sur la sélection courante',
+              sous: 'Sur le registre chargé',
               ton: totalDu > 0 ? 'rouge' : 'teal',
+              onClick: function () {
+                maj({ paiement: 'en_retard' });
+              },
+              actif: filtrePaiement === 'en_retard',
             },
             {
               label: 'Foyers à jour',
               valeur: chargement ? '—' : nombre(nbAJour),
-              sous: total > 0 ? `${Math.round((nbAJour / total) * 100)} % de la sélection` : '—',
+              sous:
+                lignes.length > 0
+                  ? `${Math.round((nbAJour / lignes.length) * 100)} % du registre`
+                  : '—',
               ton: 'teal',
+              onClick: function () {
+                maj({ paiement: 'a_jour' });
+              },
+              actif: filtrePaiement === 'a_jour',
             },
             {
               label: 'Foyers en dette',
               valeur: chargement ? '—' : nombre(nbRetard),
               sous: 'Abonnement non soldé',
               ton: nbRetard > 0 ? 'or' : 'defaut',
+              onClick: function () {
+                maj({ paiement: 'en_retard' });
+              },
+              actif: filtrePaiement === 'en_retard',
             },
             {
               label: 'Sans abonnement',
               valeur: chargement ? '—' : nombre(nbSans),
               sous: 'À souscrire',
               ton: nbSans > 0 ? 'rouge' : 'defaut',
+              onClick: function () {
+                maj({ paiement: 'sans' });
+              },
+              actif: filtrePaiement === 'sans',
             },
           ]}
         />
@@ -373,13 +381,17 @@ export default function MenagesPage() {
           outils={
             <div className="no-print flex flex-wrap items-center gap-2">
               <Recherche
-                valeur={recherche}
-                onChange={setRecherche}
+                valeur={rechercheSaisie}
+                onChange={function (v) {
+                  setRechercheSaisie(v);
+                }}
                 placeholder="Code, repère, téléphone…"
               />
               <SelectFiltre
                 valeur={filtreQuartier}
-                onChange={setFiltreQuartier}
+                onChange={function (v) {
+                  maj({ quartier: v });
+                }}
                 ariaLabel="Filtrer par quartier"
               >
                 <option value="">Tous les quartiers</option>
@@ -393,7 +405,9 @@ export default function MenagesPage() {
               </SelectFiltre>
               <SelectFiltre
                 valeur={filtreStatut}
-                onChange={setFiltreStatut}
+                onChange={function (v) {
+                  maj({ statut: v });
+                }}
                 ariaLabel="Filtrer par statut"
               >
                 <option value="">Tous les statuts</option>
@@ -411,7 +425,7 @@ export default function MenagesPage() {
                     key={f.code}
                     actif={filtrePaiement === f.code}
                     onClick={function () {
-                      setFiltrePaiement(f.code);
+                      maj({ paiement: f.code });
                     }}
                   >
                     {f.label}
@@ -442,12 +456,17 @@ export default function MenagesPage() {
           >
             {tranche.map(function (m, rang) {
               return (
-                <Tr key={m.menage_id} rang={rang}>
+                <Tr key={m.menage_id} rang={rang} href={`/dashboard/menages/${m.menage_id}`}>
                   <Td mono fort>
                     {m.code_menage || '—'}
                   </Td>
                   <Td>{m.quartier || '—'}</Td>
-                  <Td className="max-w-[220px] truncate">{m.point_repere || '—'}</Td>
+                  <Td
+                    className="max-w-[220px] truncate"
+                    title={m.point_repere || undefined}
+                  >
+                    {m.point_repere || '—'}
+                  </Td>
                   <Td mono>{m.telephone_contact || '—'}</Td>
                   <Td>{libelleType(m.type_menage)}</Td>
                   <Td mono>{m.plan_code || '—'}</Td>
@@ -601,97 +620,28 @@ export default function MenagesPage() {
         </div>
       </Modal>
 
-      {/* Souscription d'abonnement */}
-      <Modal
+      <ModaleAbonnement
+        menage={cible}
         ouvert={Boolean(cible)}
         onFermer={function () {
           setCible(null);
         }}
-        titre="Souscrire un abonnement"
-        sousTitre={
-          cible ? `${cible.code_menage} · ${libelleType(cible.type_menage)} · ${cible.quartier}` : ''
-        }
-        bloquerFermeture={enregistrement}
-        pied={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Btn
-              variant="ghost"
-              disabled={enregistrement}
-              onClick={function () {
-                setCible(null);
-              }}
-            >
-              Annuler
-            </Btn>
-            <Btn
-              variant="green"
-              disabled={enregistrement || !planChoisi}
-              onClick={creerAbonnement}
-            >
-              {enregistrement ? 'Création…' : "Créer l'abonnement"}
-            </Btn>
-          </div>
-        }
-      >
-        {messageForm ? (
-          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
-            {messageForm}
-          </p>
-        ) : null}
-
-        <p className="mt-0 mb-4 text-[12.5px] text-muted">
-          Le premier mois devient dû à la création. L&apos;abonnement ne s&apos;active qu&apos;une fois
-          le paiement confirmé.
-        </p>
-
-        {plans.length === 0 ? (
-          <p className="m-0 text-[12.5px] text-muted2">
-            Aucun plan disponible pour ce type de foyer.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {plans.map(function (p) {
-              const choisi = planChoisi === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={function () {
-                    setPlanChoisi(p.id);
-                  }}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left outline-none transition-colors',
-                    'focus-visible:ring-2 focus-visible:ring-blue',
-                    choisi
-                      ? 'border-green bg-[color-mix(in_srgb,var(--lp-green)_12%,transparent)]'
-                      : 'border-line hover:border-line2 hover:bg-panel2',
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'size-2.5 shrink-0 rounded-full border-2 transition-colors',
-                      choisi ? 'border-green bg-green' : 'border-line2',
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-[12.5px] font-bold text-txt">
-                      {p.code}
-                    </span>
-                    <span className="mt-0.5 block text-[11.5px] text-muted">
-                      {p.libelle} · {p.passages_par_semaine} passage
-                      {p.passages_par_semaine > 1 ? 's' : ''}/semaine
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[13px] font-bold text-txt tabular-nums">
-                    {montant(p.montant_gnf)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
+        onCree={charger}
+      />
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+          Ouverture du registre…
+        </p>
+      }
+    >
+      <MenagesPage />
+    </Suspense>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useEtatListe } from '@/lib/useEtatListe';
 import {
   Badge,
   BandeauErreur,
@@ -30,6 +31,12 @@ import { IconPlus } from '@/components/icons';
 
 const FORM_VIDE = { nomComplet: '', telephone: '', email: '', motDePasse: '' };
 
+const SCHEMA_LISTE = {
+  q: { defaut: '', type: 'string' },
+  filtre: { defaut: 'tous', type: 'string' },
+  page: { defaut: 1, type: 'int' },
+};
+
 const FILTRES = [
   { code: 'tous', label: 'Tous' },
   { code: 'actif', label: 'En service' },
@@ -48,7 +55,7 @@ const COLONNES = [
   { cle: 'action', label: '', align: 'right', noPrint: true },
 ];
 
-export default function CollecteursPage() {
+function CollecteursPage() {
   const [collecteurs, setCollecteurs] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
@@ -56,8 +63,10 @@ export default function CollecteursPage() {
   // rendrait le composant impur.
   const [instant, setInstant] = useState(0);
 
-  const [recherche, setRecherche] = useState('');
-  const [filtre, setFiltre] = useState('tous');
+  const [etat, maj] = useEtatListe(SCHEMA_LISTE);
+  const recherche = etat.q;
+  const filtre = etat.filtre;
+  const [rechercheSaisie, setRechercheSaisie] = useState(etat.q);
 
   const [modale, setModale] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -94,6 +103,19 @@ export default function CollecteursPage() {
     [charger],
   );
 
+  useEffect(
+    function () {
+      if (rechercheSaisie === etat.q) return undefined;
+      const minuteur = window.setTimeout(function () {
+        maj({ q: rechercheSaisie });
+      }, 300);
+      return function () {
+        window.clearTimeout(minuteur);
+      };
+    },
+    [etat.q, maj, rechercheSaisie],
+  );
+
   const filtres = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
@@ -114,7 +136,12 @@ export default function CollecteursPage() {
     [collecteurs, recherche, filtre, instant],
   );
 
-  const { page, pages, total, tranche, setPage } = usePagination(filtres, 25);
+  const { page, pages, total, tranche, setPage } = usePagination(filtres, 25, {
+    page: etat.page,
+    onChange: function (p) {
+      maj({ page: p });
+    },
+  });
 
   const enService = collecteurs.filter(function (c) {
     return c.actif;
@@ -258,6 +285,10 @@ export default function CollecteursPage() {
             valeur: chargement ? '—' : nombre(enService.length),
             sous: `${nombre(collecteurs.length - enService.length)} désactivé${collecteurs.length - enService.length > 1 ? 's' : ''}`,
             ton: 'teal',
+            onClick: function () {
+              maj({ filtre: 'actif' });
+            },
+            actif: filtre === 'actif',
           },
           {
             label: 'Passages cette semaine',
@@ -269,6 +300,10 @@ export default function CollecteursPage() {
             valeur: chargement ? '—' : nombre(dormants),
             sous: dormants > 0 ? 'Agents à relancer' : 'Tous ont pointé',
             ton: dormants > 0 ? 'or' : 'teal',
+            onClick: function () {
+              maj({ filtre: 'inactifs_7j' });
+            },
+            actif: filtre === 'inactifs_7j',
           },
           {
             label: 'Moyenne par agent',
@@ -288,7 +323,13 @@ export default function CollecteursPage() {
             : `${nombre(total)} résultat${total > 1 ? 's' : ''}${total !== collecteurs.length ? ` · ${nombre(collecteurs.length)} au total` : ''}`
         }
         outils={
-          <Recherche valeur={recherche} onChange={setRecherche} placeholder="Nom, téléphone…" />
+          <Recherche
+            valeur={rechercheSaisie}
+            onChange={function (v) {
+              setRechercheSaisie(v);
+            }}
+            placeholder="Nom, téléphone…"
+          />
         }
         chips={
           <div className="flex flex-wrap gap-1.5">
@@ -298,7 +339,7 @@ export default function CollecteursPage() {
                   key={f.code}
                   actif={filtre === f.code}
                   onClick={function () {
-                    setFiltre(f.code);
+                    maj({ filtre: f.code });
                   }}
                 >
                   {f.label}
@@ -323,7 +364,7 @@ export default function CollecteursPage() {
             const dormant =
               c.actif && (!c.dernier_passage || new Date(c.dernier_passage).getTime() < seuil7j);
             return (
-              <Tr key={c.id} rang={rang}>
+              <Tr key={c.id} rang={rang} href={`/dashboard/collecteurs/${c.id}`}>
                 <Td fort>
                   <span className="flex items-center gap-2.5">
                     <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line2 bg-panel2 font-mono text-[11px] font-bold text-txt">
@@ -337,11 +378,13 @@ export default function CollecteursPage() {
                         .join('')
                         .toUpperCase()}
                     </span>
-                    <span className="min-w-0 truncate">{c.nom_complet}</span>
+                    <span className="min-w-0 truncate" title={c.nom_complet || undefined}>
+                      {c.nom_complet}
+                    </span>
                   </span>
                 </Td>
                 <Td mono>{c.telephone || '—'}</Td>
-                <Td className="max-w-[220px] truncate">
+                <Td className="max-w-[220px] truncate" title={c.quartier || undefined}>
                   {c.quartier || <span className="text-muted2">Aucune tournée affectée</span>}
                 </Td>
                 <Td align="right">
@@ -538,5 +581,19 @@ export default function CollecteursPage() {
         </p>
       </Modal>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+          Ouverture de l’annuaire…
+        </p>
+      }
+    >
+      <CollecteursPage />
+    </Suspense>
   );
 }

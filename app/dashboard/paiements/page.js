@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Badge,
   BadgeStatut,
@@ -77,7 +78,7 @@ function dateCourte(iso) {
 /* Guichet d'encaissement                                              */
 /* ------------------------------------------------------------------ */
 
-function Guichet({ ouvert, onFermer, onEncaisse }) {
+function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
   const [requete, setRequete] = useState('');
   const [resultats, setResultats] = useState([]);
   const [cherche, setCherche] = useState(false);
@@ -107,15 +108,19 @@ function Guichet({ ouvert, onFermer, onEncaisse }) {
       setSucces(null);
       setReference('');
       setNote('');
+    } else if (requeteInitiale.trim().length >= 2) {
+      setRequete(requeteInitiale.trim());
     }
   }
 
-  async function chercher() {
-    if (requete.trim().length < 2) return;
+  async function chercher(qForce) {
+    const q = String(qForce ?? requete).trim();
+    if (q.length < 2) return;
+    setRequete(q);
     setCherche(true);
     setErreur(null);
     try {
-      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(requete)}`);
+      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(q)}`);
       if (!r.ok) throw new Error();
       const j = await r.json();
       setResultats(j.data || []);
@@ -124,6 +129,20 @@ function Guichet({ ouvert, onFermer, onEncaisse }) {
     }
     setCherche(false);
   }
+
+  useEffect(
+    function () {
+      if (!ouvert) return;
+      const q = requeteInitiale.trim();
+      if (q.length < 2) return;
+      // Le fetch d'ouverture met à jour les résultats après sa résolution.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      chercher(q);
+    },
+    // Intentionnellement limité à l'ouverture : chercher est recréée à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ouvert, requeteInitiale],
+  );
 
   async function selectionner(m) {
     setChoisi(m);
@@ -443,13 +462,15 @@ function Guichet({ ouvert, onFermer, onEncaisse }) {
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function PaiementsPage() {
+function PaiementsPage() {
+  const searchParams = useSearchParams();
+  const qUrl = (searchParams.get('q') || '').trim();
   const [liste, setListe] = useState([]);
   const [totaux, setTotaux] = useState({ montant: 0, penalite: 0 });
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
-  const [guichet, setGuichet] = useState(false);
+  const [guichet, setGuichet] = useState(qUrl.length >= 2);
 
   const [fQuartier, setFQuartier] = useState('');
   const [fStatut, setFStatut] = useState('');
@@ -776,11 +797,26 @@ export default function PaiementsPage() {
 
       <Guichet
         ouvert={guichet}
+        requeteInitiale={qUrl}
         onFermer={function () {
           setGuichet(false);
         }}
         onEncaisse={charger}
       />
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+          Ouverture du journal…
+        </p>
+      }
+    >
+      <PaiementsPage />
+    </Suspense>
   );
 }

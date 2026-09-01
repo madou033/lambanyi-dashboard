@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 import { IconChevronBas, IconRecherche } from '@/components/icons';
 
@@ -20,7 +21,7 @@ import { IconChevronBas, IconRecherche } from '@/components/icons';
 export function CarteListe({ titre, sousTitre, outils, chips, pied, delai = 60, children }) {
   return (
     <section
-      className="lp-rise mt-6 overflow-hidden rounded-2xl border border-line bg-panel"
+      className="lp-rise mt-6 rounded-2xl border border-line bg-panel"
       style={{ animationDelay: `${delai}ms` }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
@@ -92,7 +93,7 @@ export function SelectFiltre({ valeur, onChange, ariaLabel, className, children 
  */
 export function Tableau({ colonnes, children, vide }) {
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-b border-line">
@@ -102,7 +103,7 @@ export function Tableau({ colonnes, children, vide }) {
                   key={c.cle}
                   scope="col"
                   className={cn(
-                    'px-5 py-2.5 text-[10px] font-semibold tracking-wide text-muted uppercase',
+                    'sticky top-0 z-10 bg-panel px-5 py-2.5 text-[10px] font-semibold tracking-wide text-muted uppercase',
                     c.align === 'right'
                       ? 'text-right'
                       : c.align === 'center'
@@ -133,12 +134,35 @@ export function Tableau({ colonnes, children, vide }) {
   );
 }
 
-export function Tr({ className, rang = 0, children, ...props }) {
+export function Tr({ href, className, rang = 0, children, ...props }) {
+  const router = useRouter();
+  const cliquable = Boolean(href);
+
+  function aller(e) {
+    if (!cliquable) return;
+    if (e.target.closest('a, button, input, select, textarea, label, [data-no-row-nav]')) return;
+    router.push(href);
+  }
+
+  function clavier(e) {
+    if (!cliquable) return;
+    if (e.target.closest('a, button, input, select, textarea, label, [data-no-row-nav]')) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    router.push(href);
+  }
+
   return (
     <tr
+      role={cliquable ? 'link' : undefined}
+      tabIndex={cliquable ? 0 : undefined}
+      onClick={cliquable ? aller : undefined}
+      onKeyDown={cliquable ? clavier : undefined}
       className={cn(
         'lp-rise border-b border-line last:border-b-0 transition-colors',
         'hover:bg-[color-mix(in_srgb,var(--lp-txt)_2.5%,transparent)]',
+        cliquable &&
+          'cursor-pointer outline-none focus-visible:bg-[color-mix(in_srgb,var(--lp-txt)_4%,transparent)] focus-visible:ring-2 focus-visible:ring-blue focus-visible:ring-inset',
         className,
       )}
       style={{ animationDelay: `${Math.min(rang, 12) * 30}ms` }}
@@ -171,27 +195,30 @@ export function Td({ align, mono, fort, className, children, ...props }) {
 /* ------------------------------------------------------------------ */
 
 /** Découpe une liste et remet la page à 1 quand la liste change de taille. */
-export function usePagination(items, taille = 25) {
-  const [page, setPage] = useState(1);
+export function usePagination(items, taille = 25, controle) {
+  const [pageInterne, setPageInterne] = useState(1);
   const [tailleVue, setTailleVue] = useState(items.length);
   const pages = Math.max(1, Math.ceil(items.length / taille));
+  const controlee = Boolean(controle);
 
-  // Ajustement pendant le rendu — le motif recommandé par React pour dériver
-  // un état d'une prop qui change. Un effet provoquerait un rendu en cascade.
-  if (tailleVue !== items.length) {
+  if (!controlee && tailleVue !== items.length) {
     setTailleVue(items.length);
-    setPage(1);
+    setPageInterne(1);
   }
+
+  const pageBrute = controlee ? controle.page : pageInterne;
+  const page = Math.min(Math.max(1, pageBrute), pages);
+  const setPage = controlee ? controle.onChange : setPageInterne;
 
   const tranche = useMemo(
     function () {
-      const debut = (Math.min(page, pages) - 1) * taille;
+      const debut = (page - 1) * taille;
       return items.slice(debut, debut + taille);
     },
-    [items, page, pages, taille],
+    [items, page, taille],
   );
 
-  return { page: Math.min(page, pages), pages, total: items.length, tranche, setPage };
+  return { page, pages, total: items.length, tranche, setPage };
 }
 
 /* ------------------------------------------------------------------ */
@@ -266,8 +293,8 @@ export function BandeauMetriques({ metriques, delai = 40 }) {
       style={{ animationDelay: `${delai}ms` }}
     >
       {metriques.map(function (m) {
-        return (
-          <div key={m.label} className="flex flex-col gap-1 px-5 first:pl-1">
+        const contenu = (
+          <>
             <span className="text-[9.5px] tracking-[1.8px] text-muted uppercase">{m.label}</span>
             <span
               className={cn(
@@ -278,6 +305,25 @@ export function BandeauMetriques({ metriques, delai = 40 }) {
               {m.valeur}
             </span>
             {m.sous ? <span className="text-[11px] text-muted2">{m.sous}</span> : null}
+          </>
+        );
+        const className = cn(
+          'flex flex-col gap-1 px-5 first:pl-1',
+          m.onClick && 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue',
+        );
+        return m.onClick ? (
+          <button
+            key={m.label}
+            type="button"
+            onClick={m.onClick}
+            aria-pressed={m.actif || undefined}
+            className={className}
+          >
+            {contenu}
+          </button>
+        ) : (
+          <div key={m.label} className={className}>
+            {contenu}
           </div>
         );
       })}
