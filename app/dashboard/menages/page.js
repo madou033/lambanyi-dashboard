@@ -31,6 +31,7 @@ import {
   usePagination,
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
+import { ModaleAbonnement } from '@/components/ModaleAbonnement';
 
 const TYPES_MENAGE = [
   { code: 'residentiel', label: 'Résidentiel' },
@@ -118,8 +119,6 @@ function MenagesPage() {
   const [modaleMenage, setModaleMenage] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
   const [cible, setCible] = useState(null);
-  const [plans, setPlans] = useState([]);
-  const [planChoisi, setPlanChoisi] = useState('');
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
 
@@ -222,47 +221,8 @@ function MenagesPage() {
     charger();
   }
 
-  async function ouvrirAbonnement(m) {
+  function ouvrirAbonnement(m) {
     setCible(m);
-    setPlanChoisi('');
-    setMessageForm(null);
-    setPlans([]);
-    try {
-      const r = await fetch(`/api/abonnements?type_menage=${encodeURIComponent(m.type_menage)}`);
-      if (!r.ok) throw new Error('Service indisponible');
-      const j = await r.json();
-      setPlans(j.data || []);
-    } catch {
-      setMessageForm("Impossible de charger les plans tarifaires — vérifiez la configuration du serveur.");
-    }
-  }
-
-  async function creerAbonnement() {
-    if (!planChoisi) {
-      setMessageForm('Choisissez un plan.');
-      return;
-    }
-    setEnregistrement(true);
-    try {
-      const r = await fetch('/api/abonnements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menage_id: cible.menage_id, plan_id: planChoisi }),
-      });
-      const j = await r.json().catch(function () {
-        return {};
-      });
-      setEnregistrement(false);
-      if (!r.ok) {
-        setMessageForm(j.error || "L'abonnement n'a pas pu être créé.");
-        return;
-      }
-      setCible(null);
-      charger();
-    } catch {
-      setEnregistrement(false);
-      setMessageForm('Erreur réseau.');
-    }
   }
 
   function exporter() {
@@ -638,97 +598,14 @@ function MenagesPage() {
         </div>
       </Modal>
 
-      {/* Souscription d'abonnement */}
-      <Modal
+      <ModaleAbonnement
+        menage={cible}
         ouvert={Boolean(cible)}
         onFermer={function () {
           setCible(null);
         }}
-        titre="Souscrire un abonnement"
-        sousTitre={
-          cible ? `${cible.code_menage} · ${libelleType(cible.type_menage)} · ${cible.quartier}` : ''
-        }
-        bloquerFermeture={enregistrement}
-        pied={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Btn
-              variant="ghost"
-              disabled={enregistrement}
-              onClick={function () {
-                setCible(null);
-              }}
-            >
-              Annuler
-            </Btn>
-            <Btn
-              variant="green"
-              disabled={enregistrement || !planChoisi}
-              onClick={creerAbonnement}
-            >
-              {enregistrement ? 'Création…' : "Créer l'abonnement"}
-            </Btn>
-          </div>
-        }
-      >
-        {messageForm ? (
-          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
-            {messageForm}
-          </p>
-        ) : null}
-
-        <p className="mt-0 mb-4 text-[12.5px] text-muted">
-          Le premier mois devient dû à la création. L&apos;abonnement ne s&apos;active qu&apos;une fois
-          le paiement confirmé.
-        </p>
-
-        {plans.length === 0 ? (
-          <p className="m-0 text-[12.5px] text-muted2">
-            Aucun plan disponible pour ce type de foyer.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {plans.map(function (p) {
-              const choisi = planChoisi === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={function () {
-                    setPlanChoisi(p.id);
-                  }}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left outline-none transition-colors',
-                    'focus-visible:ring-2 focus-visible:ring-blue',
-                    choisi
-                      ? 'border-green bg-[color-mix(in_srgb,var(--lp-green)_12%,transparent)]'
-                      : 'border-line hover:border-line2 hover:bg-panel2',
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'size-2.5 shrink-0 rounded-full border-2 transition-colors',
-                      choisi ? 'border-green bg-green' : 'border-line2',
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-[12.5px] font-bold text-txt">
-                      {p.code}
-                    </span>
-                    <span className="mt-0.5 block text-[11.5px] text-muted">
-                      {p.libelle} · {p.passages_par_semaine} passage
-                      {p.passages_par_semaine > 1 ? 's' : ''}/semaine
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[13px] font-bold text-txt tabular-nums">
-                    {montant(p.montant_gnf)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
+        onCree={charger}
+      />
     </div>
   );
 }
