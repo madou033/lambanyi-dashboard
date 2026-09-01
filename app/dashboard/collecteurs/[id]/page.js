@@ -109,9 +109,8 @@ export default function CollecteurPage() {
             .limit(500),
           supabase
             .from('profils')
-            .select('id, nom_complet')
+            .select('id, nom_complet, actif')
             .eq('role', 'collecteur')
-            .eq('actif', true)
             .order('nom_complet'),
         ]);
 
@@ -141,7 +140,11 @@ export default function CollecteurPage() {
       setTournees(tourneesReponse.data || []);
       setPassages(passagesReponse.data || []);
       setDepots(depotsReponse.data || []);
-      setCollegues(colleguesReponse.data || []);
+      setCollegues(
+        (colleguesReponse.data || []).filter(function (collegue) {
+          return collegue.actif || collegue.id === id;
+        }),
+      );
 
       if (activiteReponse.error || profilReponse.error) {
         const detail = activiteReponse.error?.message || profilReponse.error?.message;
@@ -205,6 +208,16 @@ export default function CollecteurPage() {
         : new Array(7).fill(0);
     },
     [instant, passages],
+  );
+  const libelles7j = useMemo(
+    function () {
+      return new Array(7).fill(null).map(function (_, i) {
+        return new Date(instant - (6 - i) * 86_400_000).toLocaleDateString('fr-FR', {
+          weekday: 'short',
+        });
+      });
+    },
+    [instant],
   );
   const depots7j = depots.filter(function (depot) {
     return instant && new Date(depot.created_at).getTime() >= seuil7j;
@@ -388,8 +401,8 @@ export default function CollecteurPage() {
               <div>
                 <MiniBarres valeurs={valeurs7j} accent="var(--lp-teal)" className="h-24" />
                 <div className="mt-2 grid grid-cols-7 gap-1 text-center font-mono text-[9px] text-muted2">
-                  {JOURS.map(function (jour) {
-                    return <span key={jour}>{jour.slice(0, 3)}</span>;
+                  {libelles7j.map(function (jour, i) {
+                    return <span key={`${jour}-${i}`}>{jour}</span>;
                   })}
                 </div>
               </div>
@@ -602,10 +615,12 @@ export default function CollecteurPage() {
                           reaffecter(tournee.id, e.target.value);
                         }}
                       >
+                        <option value="">— Non affectée —</option>
                         {collegues.map(function (collegue) {
                           return (
                             <option key={collegue.id} value={collegue.id}>
                               {collegue.nom_complet}
+                              {!collegue.actif ? ' (désactivé)' : ''}
                             </option>
                           );
                         })}

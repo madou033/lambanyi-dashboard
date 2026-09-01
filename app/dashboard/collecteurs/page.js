@@ -66,6 +66,7 @@ function CollecteursPage() {
   const [etat, maj] = useEtatListe(SCHEMA_LISTE);
   const recherche = etat.q;
   const filtre = etat.filtre;
+  const [rechercheSaisie, setRechercheSaisie] = useState(etat.q);
 
   const [modale, setModale] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -100,6 +101,19 @@ function CollecteursPage() {
       charger();
     },
     [charger],
+  );
+
+  useEffect(
+    function () {
+      if (rechercheSaisie === etat.q) return undefined;
+      const minuteur = window.setTimeout(function () {
+        maj({ q: rechercheSaisie });
+      }, 300);
+      return function () {
+        window.clearTimeout(minuteur);
+      };
+    },
+    [etat.q, maj, rechercheSaisie],
   );
 
   const filtres = useMemo(
@@ -310,9 +324,9 @@ function CollecteursPage() {
         }
         outils={
           <Recherche
-            valeur={recherche}
+            valeur={rechercheSaisie}
             onChange={function (v) {
-              maj({ q: v });
+              setRechercheSaisie(v);
             }}
             placeholder="Nom, téléphone…"
           />
@@ -364,11 +378,13 @@ function CollecteursPage() {
                         .join('')
                         .toUpperCase()}
                     </span>
-                    <span className="min-w-0 truncate">{c.nom_complet}</span>
+                    <span className="min-w-0 truncate" title={c.nom_complet || undefined}>
+                      {c.nom_complet}
+                    </span>
                   </span>
                 </Td>
                 <Td mono>{c.telephone || '—'}</Td>
-                <Td className="max-w-[220px] truncate">
+                <Td className="max-w-[220px] truncate" title={c.quartier || undefined}>
                   {c.quartier || <span className="text-muted2">Aucune tournée affectée</span>}
                 </Td>
                 <Td align="right">

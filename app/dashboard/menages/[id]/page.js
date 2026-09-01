@@ -563,17 +563,18 @@ export default function MenagePage() {
                 label: passage.statut || 'Sans statut',
                 ton: 'muted',
               };
+              const collecteur =
+                relation(passage.profils)?.nom_complet || 'Collecteur non renseigné';
               return (
                 <LigneJournal
                   key={passage.id}
                   rail={couleurTon(definition.ton)}
                   titre={
                     <span className="flex flex-wrap items-center gap-2">
-                      {definition.label}
+                      {collecteur}
                       <Badge ton={definition.ton}>{definition.label}</Badge>
                     </span>
                   }
-                  sous={relation(passage.profils)?.nom_complet || 'Collecteur non renseigné'}
                   droite={dateCourte(passage.created_at)}
                   rang={rang}
                 />

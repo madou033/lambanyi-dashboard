@@ -115,6 +115,7 @@ function MenagesPage() {
   const filtreQuartier = etat.quartier;
   const filtreStatut = etat.statut;
   const filtrePaiement = etat.paiement;
+  const [rechercheSaisie, setRechercheSaisie] = useState(etat.q);
 
   const [modaleMenage, setModaleMenage] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -149,6 +150,19 @@ function MenagesPage() {
     [charger],
   );
 
+  useEffect(
+    function () {
+      if (rechercheSaisie === etat.q) return undefined;
+      const minuteur = window.setTimeout(function () {
+        maj({ q: rechercheSaisie });
+      }, 300);
+      return function () {
+        window.clearTimeout(minuteur);
+      };
+    },
+    [etat.q, maj, rechercheSaisie],
+  );
+
   const filtrees = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
@@ -174,16 +188,16 @@ function MenagesPage() {
     },
   });
 
-  const totalDu = filtrees.reduce(function (s, m) {
+  const totalDu = lignes.reduce(function (s, m) {
     return s + Number(m.total_du || 0);
   }, 0);
-  const nbRetard = filtrees.filter(function (m) {
+  const nbRetard = lignes.filter(function (m) {
     return m.abonnement_id && m.est_solde === false;
   }).length;
-  const nbSans = filtrees.filter(function (m) {
+  const nbSans = lignes.filter(function (m) {
     return !m.abonnement_id;
   }).length;
-  const nbAJour = filtrees.filter(function (m) {
+  const nbAJour = lignes.filter(function (m) {
     return m.est_solde === true;
   }).length;
 
@@ -310,7 +324,7 @@ function MenagesPage() {
             {
               label: 'Créances ouvertes',
               valeur: chargement ? '—' : montant(totalDu),
-              sous: 'Sur la sélection courante',
+              sous: 'Sur le registre chargé',
               ton: totalDu > 0 ? 'rouge' : 'teal',
               onClick: function () {
                 maj({ paiement: 'en_retard' });
@@ -320,7 +334,10 @@ function MenagesPage() {
             {
               label: 'Foyers à jour',
               valeur: chargement ? '—' : nombre(nbAJour),
-              sous: total > 0 ? `${Math.round((nbAJour / total) * 100)} % de la sélection` : '—',
+              sous:
+                lignes.length > 0
+                  ? `${Math.round((nbAJour / lignes.length) * 100)} % du registre`
+                  : '—',
               ton: 'teal',
               onClick: function () {
                 maj({ paiement: 'a_jour' });
@@ -364,9 +381,9 @@ function MenagesPage() {
           outils={
             <div className="no-print flex flex-wrap items-center gap-2">
               <Recherche
-                valeur={recherche}
+                valeur={rechercheSaisie}
                 onChange={function (v) {
-                  maj({ q: v });
+                  setRechercheSaisie(v);
                 }}
                 placeholder="Code, repère, téléphone…"
               />
@@ -444,7 +461,12 @@ function MenagesPage() {
                     {m.code_menage || '—'}
                   </Td>
                   <Td>{m.quartier || '—'}</Td>
-                  <Td className="max-w-[220px] truncate">{m.point_repere || '—'}</Td>
+                  <Td
+                    className="max-w-[220px] truncate"
+                    title={m.point_repere || undefined}
+                  >
+                    {m.point_repere || '—'}
+                  </Td>
                   <Td mono>{m.telephone_contact || '—'}</Td>
                   <Td>{libelleType(m.type_menage)}</Td>
                   <Td mono>{m.plan_code || '—'}</Td>

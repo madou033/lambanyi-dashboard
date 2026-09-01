@@ -93,7 +93,7 @@ export function SelectFiltre({ valeur, onChange, ariaLabel, className, children 
  */
 export function Tableau({ colonnes, children, vide }) {
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-b border-line">
@@ -146,6 +146,7 @@ export function Tr({ href, className, rang = 0, children, ...props }) {
 
   function clavier(e) {
     if (!cliquable) return;
+    if (e.target.closest('a, button, input, select, textarea, label, [data-no-row-nav]')) return;
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     router.push(href);
