@@ -465,11 +465,28 @@ PageHeader (kicker + H1 + phrase)          [Exporter] [+ Nouveau]
 
 ### 5.3 Écran de détail
 
-**Bandeau meta + corps + rail latéral** :
+Route `/dashboard/<entite>/[id]`. Briques : `components/fiche.js`.
 
-- Bandeau : fil d'Ariane, titre serif, badges de statut, méta (« créé par · il y a X · priorité »), actions.
-- Corps (2/3) : contenu principal, timeline de jalons verticale, formulaires.
-- Rail (1/3) : `Panel` d'informations, activité récente, historique.
+**Retour à la liste.** L'état de liste (recherche, chips, selects, page) vit
+dans l'URL. `router.back()` restaure filtres et pagination. Le fil d'Ariane
+pointe le pathname de liste sans query.
+
+**Ligne de liste cliquable.** `Tr` accepte `href`. Toute la ligne navigue,
+sauf `a, button, input, select`. Pas de bouton « Voir ».
+
+**Bandeau meta** : bouton retour + fil d'Ariane, un seul H1 serif 27 px,
+badges hors du H1, méta 12.5 px muted, **trois actions maximum**
+(primaire → ghost → destructif).
+
+**Corps / rail** : `xl:grid-cols-12` gap-x-10 gap-y-9, corps `col-span-8`,
+rail `col-span-4`. Sous `xl`, empiler rail **après** le corps, identité
+en premier dans le rail.
+
+**Journaux de fiche** : chips de statut, pagination **10**, pas d'onglets,
+pas de recherche. Select de période seulement s'il y a plus de 30 événements.
+
+**KPI de liste** : un clic applique le chip correspondant, il ne change
+pas de page.
 
 ### 5.4 États
 
