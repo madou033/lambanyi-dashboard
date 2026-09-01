@@ -3,7 +3,7 @@
 > Passer d’un simple commutateur de statut à un produit : responsabilité,
 > aging, affectation PME/agent, frise complète côté admin.
 
-**Statut :** design validé — en attente du plan d’implémentation.
+**Statut :** implémenté localement (T1–T7) — en attente de la migration remote et d’une validation humaine. Pas encore « livré V1 ».
 **Périmètre :** `lambanyi-db` · `lambanyi-dashboard` · `lambanyi-mobile`.
 **Contexte admin :** personnel communal (`admin`, `superviseur`).
 **Charte UI :** `DESIGN_SYSTEM.md` (§5.2 liste, §5.3 fiche).
