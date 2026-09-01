@@ -4,7 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { estEnRetard, libelleAffectation } from '@/lib/signalements';
+import {
+  deposerEvenement,
+  estEnRetard,
+  libelleAffectation,
+  libelleTypeSignalement,
+  MOTIF_MINIMUM,
+  TYPES_SIGNALEMENT,
+  vuePilotageAbsente,
+} from '@/lib/signalements';
 import { ModaleAffectationSignalement } from '@/components/ModaleAffectationSignalement';
 import {
   Badge,
@@ -40,13 +48,6 @@ const CarteSignalements = dynamic(
   },
 );
 
-const TYPES = [
-  { code: 'depotoir_sauvage', label: 'Dépotoir sauvage' },
-  { code: 'collecte_manquee', label: 'Collecte manquée' },
-  { code: 'bac_plein', label: 'Bac plein' },
-  { code: 'autre', label: 'Autre' },
-];
-
 const STATUTS = [
   { code: 'tous', label: 'Tous' },
   { code: 'en_retard', label: 'En retard' },
@@ -56,10 +57,6 @@ const STATUTS = [
   { code: 'rejete', label: 'Rejetés' },
 ];
 
-/** Longueur minimale du motif, imposée par la contrainte de la table
- *  signalements_evenements. Dix caractères écartent « ok » et « fait ». */
-const MOTIF_MINIMUM = 10;
-
 const PERIODES = [
   { code: '', label: 'Toutes les périodes' },
   { code: 'jour', label: "Aujourd'hui" },
@@ -67,26 +64,9 @@ const PERIODES = [
   { code: 'mois', label: '30 derniers jours' },
 ];
 
-function libelleType(code) {
-  const t = TYPES.find(function (x) {
-    return x.code === code;
-  });
-  return t ? t.label : String(code ?? '—').replaceAll('_', ' ');
-}
-
 function horodatage(iso) {
   const d = new Date(iso);
   return `${d.toLocaleDateString('fr-FR')} à ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function vuePilotageAbsente(error) {
-  return (
-    error?.code === '42P01' ||
-    error?.code === 'PGRST205' ||
-    /signalements_pilotage.*(introuvable|not found|does not exist)|relation.*does not exist/i.test(
-      error?.message || '',
-    )
-  );
 }
 
 function normaliserSignalements(liste, positions, instant) {
@@ -137,7 +117,7 @@ function LigneSignalement({
       <Link
         href={`/dashboard/signalements/${s.id}`}
         className="absolute inset-0 z-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue"
-        aria-label={`Ouvrir le signalement ${libelleType(s.type_signalement)}`}
+        aria-label={`Ouvrir le signalement ${libelleTypeSignalement(s.type_signalement)}`}
       />
       <span
         aria-hidden
@@ -186,7 +166,7 @@ function LigneSignalement({
         </div>
 
         <h3 className="font-display m-0 mt-1 text-[17px] leading-tight font-bold text-txt">
-          {libelleType(s.type_signalement)}
+          {libelleTypeSignalement(s.type_signalement)}
         </h3>
 
         <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-muted">
@@ -389,11 +369,11 @@ export default function SignalementsPage() {
     });
 
     const { data: session } = await supabase.auth.getSession();
-    const { error } = await supabase.from('signalements_evenements').insert({
-      signalement_id: id,
+    const { error } = await deposerEvenement(supabase, {
+      signalementId: id,
       statut,
-      auteur_id: session?.session?.user?.id ?? null,
       message,
+      userId: session?.session?.user?.id ?? null,
     });
 
     setEnCours(false);
@@ -445,7 +425,7 @@ export default function SignalementsPage() {
           if (jours > seuils[filtrePeriode]) return false;
         }
         if (!q) return true;
-        return `${s.description ?? ''} ${s.quartier_nom ?? ''} ${libelleType(s.type_signalement)}`
+        return `${s.description ?? ''} ${s.quartier_nom ?? ''} ${libelleTypeSignalement(s.type_signalement)}`
           .toLowerCase()
           .includes(q);
       });
@@ -473,7 +453,7 @@ export default function SignalementsPage() {
       filtres.map(function (s) {
         return [
           horodatage(s.created_at),
-          libelleType(s.type_signalement),
+          libelleTypeSignalement(s.type_signalement),
           s.quartier_nom,
           s.description,
           s.statut,
@@ -569,7 +549,7 @@ export default function SignalementsPage() {
         <Recherche valeur={recherche} onChange={setRecherche} placeholder="Description, quartier…" />
         <SelectFiltre valeur={filtreType} onChange={setFiltreType} ariaLabel="Filtrer par type">
           <option value="">Tous les types</option>
-          {TYPES.map(function (t) {
+          {TYPES_SIGNALEMENT.map(function (t) {
             return (
               <option key={t.code} value={t.code}>
                 {t.label}
