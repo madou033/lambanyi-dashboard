@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useEtatListe } from '@/lib/useEtatListe';
 import {
   BadgeStatut,
   BandeauErreur,
@@ -44,6 +45,14 @@ const FILTRES_PAIEMENT = [
   { code: 'en_retard', label: 'En dette' },
   { code: 'sans', label: 'Sans abonnement' },
 ];
+
+const SCHEMA_LISTE = {
+  q: { defaut: '', type: 'string' },
+  quartier: { defaut: '', type: 'string' },
+  statut: { defaut: '', type: 'string' },
+  paiement: { defaut: 'tous', type: 'string' },
+  page: { defaut: 1, type: 'int' },
+};
 
 const FORM_VIDE = {
   quartier_id: '',
@@ -94,16 +103,17 @@ function CelluleSolde({ m }) {
   );
 }
 
-export default function MenagesPage() {
+function MenagesPage() {
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  const [recherche, setRecherche] = useState('');
-  const [filtreQuartier, setFiltreQuartier] = useState('');
-  const [filtreStatut, setFiltreStatut] = useState('');
-  const [filtrePaiement, setFiltrePaiement] = useState('tous');
+  const [etat, maj] = useEtatListe(SCHEMA_LISTE);
+  const recherche = etat.q;
+  const filtreQuartier = etat.quartier;
+  const filtreStatut = etat.statut;
+  const filtrePaiement = etat.paiement;
 
   const [modaleMenage, setModaleMenage] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -158,7 +168,12 @@ export default function MenagesPage() {
     [lignes, recherche, filtreQuartier, filtreStatut, filtrePaiement],
   );
 
-  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25);
+  const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25, {
+    page: etat.page,
+    onChange: function (p) {
+      maj({ page: p });
+    },
+  });
 
   const totalDu = filtrees.reduce(function (s, m) {
     return s + Number(m.total_du || 0);
@@ -337,24 +352,40 @@ export default function MenagesPage() {
               valeur: chargement ? '—' : montant(totalDu),
               sous: 'Sur la sélection courante',
               ton: totalDu > 0 ? 'rouge' : 'teal',
+              onClick: function () {
+                maj({ paiement: 'en_retard' });
+              },
+              actif: filtrePaiement === 'en_retard',
             },
             {
               label: 'Foyers à jour',
               valeur: chargement ? '—' : nombre(nbAJour),
               sous: total > 0 ? `${Math.round((nbAJour / total) * 100)} % de la sélection` : '—',
               ton: 'teal',
+              onClick: function () {
+                maj({ paiement: 'a_jour' });
+              },
+              actif: filtrePaiement === 'a_jour',
             },
             {
               label: 'Foyers en dette',
               valeur: chargement ? '—' : nombre(nbRetard),
               sous: 'Abonnement non soldé',
               ton: nbRetard > 0 ? 'or' : 'defaut',
+              onClick: function () {
+                maj({ paiement: 'en_retard' });
+              },
+              actif: filtrePaiement === 'en_retard',
             },
             {
               label: 'Sans abonnement',
               valeur: chargement ? '—' : nombre(nbSans),
               sous: 'À souscrire',
               ton: nbSans > 0 ? 'rouge' : 'defaut',
+              onClick: function () {
+                maj({ paiement: 'sans' });
+              },
+              actif: filtrePaiement === 'sans',
             },
           ]}
         />
@@ -374,12 +405,16 @@ export default function MenagesPage() {
             <div className="no-print flex flex-wrap items-center gap-2">
               <Recherche
                 valeur={recherche}
-                onChange={setRecherche}
+                onChange={function (v) {
+                  maj({ q: v });
+                }}
                 placeholder="Code, repère, téléphone…"
               />
               <SelectFiltre
                 valeur={filtreQuartier}
-                onChange={setFiltreQuartier}
+                onChange={function (v) {
+                  maj({ quartier: v });
+                }}
                 ariaLabel="Filtrer par quartier"
               >
                 <option value="">Tous les quartiers</option>
@@ -393,7 +428,9 @@ export default function MenagesPage() {
               </SelectFiltre>
               <SelectFiltre
                 valeur={filtreStatut}
-                onChange={setFiltreStatut}
+                onChange={function (v) {
+                  maj({ statut: v });
+                }}
                 ariaLabel="Filtrer par statut"
               >
                 <option value="">Tous les statuts</option>
@@ -411,7 +448,7 @@ export default function MenagesPage() {
                     key={f.code}
                     actif={filtrePaiement === f.code}
                     onClick={function () {
-                      setFiltrePaiement(f.code);
+                      maj({ paiement: f.code });
                     }}
                   >
                     {f.label}
@@ -442,7 +479,7 @@ export default function MenagesPage() {
           >
             {tranche.map(function (m, rang) {
               return (
-                <Tr key={m.menage_id} rang={rang}>
+                <Tr key={m.menage_id} rang={rang} href={`/dashboard/menages/${m.menage_id}`}>
                   <Td mono fort>
                     {m.code_menage || '—'}
                   </Td>
@@ -693,5 +730,19 @@ export default function MenagesPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense
+      fallback={
+        <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+          Ouverture du registre…
+        </p>
+      }
+    >
+      <MenagesPage />
+    </Suspense>
   );
 }
