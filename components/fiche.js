@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { cn, PaginationBar } from '@/components/ui';
+import { cn } from '@/components/ui';
 import { IconRetour } from '@/components/icons';
 
 export function FilAriane({ items }) {
