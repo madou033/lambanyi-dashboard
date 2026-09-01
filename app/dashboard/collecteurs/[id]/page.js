@@ -419,7 +419,7 @@ export default function CollecteurPage() {
                           <td className="px-4 py-2.5 text-[12.5px] font-semibold text-txt">
                             {JOURS[Number(tournee.jour_semaine) - 1] || '—'}
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-[12px] text-muted">
+                          <td className="px-4 py-2.5 font-mono text-[12px] text-muted tabular-nums">
                             {heureCourte(tournee.heure_debut)}
                           </td>
                           <td className="px-4 py-2.5 text-[12.5px] text-muted">
@@ -500,7 +500,11 @@ export default function CollecteurPage() {
                   rail={couleurTon(statut.ton)}
                   titre={
                     <span className="flex flex-wrap items-center gap-2">
-                      <span>{menage?.code_menage || 'Ménage'}</span>
+                      {menage?.code_menage ? (
+                        <span className="font-mono tabular-nums">{menage.code_menage}</span>
+                      ) : (
+                        <span>Ménage</span>
+                      )}
                       <Badge ton={statut.ton}>{statut.label}</Badge>
                     </span>
                   }
@@ -538,7 +542,12 @@ export default function CollecteurPage() {
                   key={depot.id}
                   rail="var(--lp-green)"
                   titre={point?.nom || 'Point de dépôt'}
-                  sous={`${nombre(charrettes)} charrette${charrettes > 1 ? 's' : ''}`}
+                  sous={
+                    <>
+                      <span className="font-mono tabular-nums">{nombre(charrettes)}</span>{' '}
+                      charrette{charrettes > 1 ? 's' : ''}
+                    </>
+                  }
                   droite={ilYA(depot.created_at)}
                   rang={rang}
                 />
@@ -550,12 +559,22 @@ export default function CollecteurPage() {
         <aside className="flex flex-col gap-9 xl:col-span-4">
           <Panel titre="Identité">
             <dl className="m-0">
-              <LigneMeta label="Téléphone">{telephone || 'Sans téléphone'}</LigneMeta>
+              <LigneMeta label="Téléphone">
+                {telephone ? (
+                  <span className="font-mono tabular-nums">{telephone}</span>
+                ) : (
+                  <span className="text-muted2">Sans téléphone</span>
+                )}
+              </LigneMeta>
               <LigneMeta label="PME">{relation(profil?.pme)?.nom || 'Commune'}</LigneMeta>
               <LigneMeta label="Inscrit le">
-                {profil?.created_at
-                  ? new Date(profil.created_at).toLocaleDateString('fr-FR')
-                  : '—'}
+                {profil?.created_at ? (
+                  <span className="font-mono tabular-nums">
+                    {new Date(profil.created_at).toLocaleDateString('fr-FR')}
+                  </span>
+                ) : (
+                  '—'
+                )}
               </LigneMeta>
             </dl>
           </Panel>
