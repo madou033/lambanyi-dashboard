@@ -17,7 +17,7 @@ import {
   tonStatut,
 } from '@/components/ui';
 import { BandeauMetriques, Recherche, SelectFiltre, exporterCsv } from '@/components/liste';
-import { Bloc } from '@/components/ui';
+import { Bloc, Champ, Modal } from '@/components/ui';
 
 const CarteSignalements = dynamic(
   function () {
@@ -51,6 +51,10 @@ const STATUTS = [
   { code: 'resolu', label: 'Résolus' },
   { code: 'rejete', label: 'Rejetés' },
 ];
+
+/** Longueur minimale du motif, imposée par la contrainte de la table
+ *  signalements_evenements. Dix caractères écartent « ok » et « fait ». */
+const MOTIF_MINIMUM = 10;
 
 const PERIODES = [
   { code: '', label: 'Toutes les périodes' },
@@ -202,6 +206,7 @@ export default function SignalementsPage() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
   const [enCours, setEnCours] = useState(false);
+  const [cloture, setCloture] = useState(null);
   const [selectionId, setSelectionId] = useState(null);
   const [instant, setInstant] = useState(0);
 
@@ -263,7 +268,26 @@ export default function SignalementsPage() {
     [charger],
   );
 
-  async function changerStatut(id, statut) {
+  /**
+   * Le statut ne se met plus à jour directement : on dépose un événement, et
+   * un trigger reporte le statut. C'est ce qui alimente la frise de suivi que
+   * l'habitant consulte dans l'application mobile — une file d'attente qui
+   * change de couleur sans rien expliquer ne vaut rien pour celui qui a
+   * signalé.
+   *
+   * Clore exige un motif : c'est une contrainte de la base. Sans lui, le
+   * trigger en inscrit un de substitution qui dit qu'aucun n'a été saisi.
+   * Autant le demander pour de bon.
+   */
+  function demanderStatut(id, statut) {
+    if (statut === 'en_cours') {
+      poserEvenement(id, statut, null);
+      return;
+    }
+    setCloture({ id, statut, message: '' });
+  }
+
+  async function poserEvenement(id, statut, message) {
     setEnCours(true);
     // Mise à jour optimiste : la file doit réagir à la vitesse du clic.
     setSignalements(function (liste) {
@@ -271,8 +295,17 @@ export default function SignalementsPage() {
         return s.id === id ? { ...s, statut } : s;
       });
     });
-    const { error } = await supabase.from('signalements').update({ statut }).eq('id', id);
+
+    const { data: session } = await supabase.auth.getSession();
+    const { error } = await supabase.from('signalements_evenements').insert({
+      signalement_id: id,
+      statut,
+      auteur_id: session?.session?.user?.id ?? null,
+      message,
+    });
+
     setEnCours(false);
+    setCloture(null);
     if (error) {
       setErreur(`La mise à jour a échoué : ${error.message}`);
       charger();
@@ -504,7 +537,7 @@ export default function SignalementsPage() {
                       rang={rang}
                       selectionne={selectionId === s.id}
                       onSelection={setSelectionId}
-                      onStatut={changerStatut}
+                      onStatut={demanderStatut}
                       enCours={enCours}
                     />
                   );
@@ -552,6 +585,57 @@ export default function SignalementsPage() {
           </Bloc>
         </div>
       </div>
+
+      <Modal
+        ouvert={cloture !== null}
+        onFermer={function () {
+          setCloture(null);
+        }}
+        titre={cloture?.statut === 'rejete' ? 'Rejeter le signalement' : 'Marquer résolu'}
+        sousTitre="Ce message est visible par l'habitant qui a signalé."
+        taille="sm"
+        pied={
+          <div className="flex justify-end gap-2">
+            <Btn
+              variant="ghost"
+              onClick={function () {
+                setCloture(null);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn
+              variant={cloture?.statut === 'rejete' ? 'red' : 'teal'}
+              disabled={enCours || (cloture?.message ?? '').trim().length < MOTIF_MINIMUM}
+              onClick={function () {
+                poserEvenement(cloture.id, cloture.statut, cloture.message.trim());
+              }}
+            >
+              {enCours ? 'Enregistrement…' : 'Confirmer'}
+            </Btn>
+          </div>
+        }
+      >
+        <Champ
+          autoFocus
+          value={cloture?.message ?? ''}
+          onChange={function (e) {
+            setCloture(function (c) {
+              return { ...c, message: e.target.value };
+            });
+          }}
+          placeholder={
+            cloture?.statut === 'rejete'
+              ? 'Doublon avec un signalement déjà traité.'
+              : 'Bac vidé ce matin, abords nettoyés.'
+          }
+        />
+        <p className="mt-2 mb-0 text-[11.5px] text-muted2">
+          {(cloture?.message ?? '').trim().length < MOTIF_MINIMUM
+            ? `Encore ${MOTIF_MINIMUM - (cloture?.message ?? '').trim().length} caractères. Recevoir « rejeté » sans motif est ce qui décourage de signaler une seconde fois.`
+            : 'Ce motif apparaîtra daté dans le suivi du signalement.'}
+        </p>
+      </Modal>
     </div>
   );
 }
