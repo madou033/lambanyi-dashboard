@@ -50,6 +50,11 @@ function Badge({ info, className }) {
   );
 }
 
+/** Chip / kbd sur nav : encre sur aplat lime, sinon filet nav. */
+function classeChipNav(surAplat) {
+  return surAplat ? 'border-encre/30 text-encre' : 'border-nav-line text-nav-muted';
+}
+
 /** Compteur discret — le chiffre du moment d'une destination. */
 function Compte({ valeur, attenue }) {
   if (valeur == null) return null;
@@ -172,13 +177,23 @@ function SousLien({ lien, badge, compteur, actif }) {
       <span className="min-w-0 flex-1 truncate">{lien.label}</span>
 
       {lien.disponible && raccourci !== undefined ? (
-        <kbd className="shrink-0 rounded border border-nav-line px-1 font-mono text-[9px] text-nav-muted opacity-0 transition-opacity duration-150 group-hover/lien:opacity-60">
+        <kbd
+          className={cn(
+            'shrink-0 rounded border px-1 font-mono text-[9px] opacity-0 transition-opacity duration-150 group-hover/lien:opacity-60',
+            classeChipNav(actif),
+          )}
+        >
           Alt {raccourci}
         </kbd>
       ) : null}
 
       {!lien.disponible ? (
-        <span className="shrink-0 rounded border border-nav-line px-1 py-px text-[8.5px] tracking-wide text-nav-muted uppercase">
+        <span
+          className={cn(
+            'shrink-0 rounded border px-1 py-px text-[8.5px] tracking-wide uppercase',
+            classeChipNav(actif),
+          )}
+        >
           bientôt
         </span>
       ) : alerte ? (
@@ -329,7 +344,12 @@ function Panneau({
                 ) : (
                   <Compte valeur={compteurs[lienSolo.to]} attenue={!actif} />
                 )}
-                <span className="shrink-0 rounded border border-nav-line px-1 py-px font-mono text-[8.5px] tracking-wider text-nav-muted">
+                <span
+                  className={cn(
+                    'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
+                    classeChipNav(actif),
+                  )}
+                >
                   {section.domaine}
                 </span>
               </Link>
@@ -355,7 +375,12 @@ function Panneau({
                 >
                   {section.titre}
                 </span>
-                <span className="shrink-0 rounded border border-nav-line px-1 py-px font-mono text-[8.5px] tracking-wider text-nav-muted">
+                <span
+                  className={cn(
+                    'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
+                    classeChipNav(actif),
+                  )}
+                >
                   {section.domaine}
                 </span>
               </div>
