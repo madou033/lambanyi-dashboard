@@ -272,22 +272,22 @@ La barre a **deux régimes**, commandés par la **punaise** logée dans l'en-tê
 bordure. On épingle ce qu'on est en train de regarder : le geste est « je garde ça ouvert », pas
 « je manœuvre une colonne ». Bouton `size-7 rounded-lg`, `aria-pressed` porte l'état.
 
-La punaise est **couchée** (`rotate-45`, `text-muted2`) quand la barre n'est pas retenue, **droite**
-(`bg-panel2 text-green`) quand elle l'est — la métaphore se lit sans libellé.
+La punaise est **couchée** (`rotate-45`, `text-nav-muted`) quand la barre n'est pas retenue, **droite**
+(`bg-nav2 text-green`) quand elle l'est — la métaphore se lit sans libellé.
 
 C'est aussi le **premier élément focusable du panneau** : un utilisateur au clavier tabule dans la
 barre, ce qui la révèle, et tombe immédiatement sur la punaise pour la retenir.
 
 L'`<aside>` est **toujours en `data-theme="dark"`**, même quand l'app est en clair : la barre foncée
-tranche sur le contenu au lieu de se fondre en gris. `bg-bg2`, `z-40`.
+tranche sur le contenu au lieu de se fondre en gris. `bg-nav`, filets `border-nav-line`, `z-40`.
 
 **Le rail (56 px, `aria-hidden`)** — purement visuel, il n'est monté qu'en régime replié ; le panneau
 porte la navigation réelle, et dupliquer les liens doublerait l'arbre pour un lecteur d'écran.
 Pictogramme de marque dans une bande de 60 px · une icône `size-10 rounded-xl` par section, la
-section active en `bg-panel2 text-green` avec une **barre verte 3 px** au bord gauche (`lp-indicator`)
+section active en `bg-green text-encre` avec une **barre verte 3 px** au bord gauche (`lp-indicator`)
 et son badge en `absolute -top-1 -right-1` · avatar dans une bande de 60 px en bas.
 
-**Le panneau (268 px)** — `absolute inset-y-0 left-0 z-30`, même `bg-bg2` que le rail. Transition
+**Le panneau (268 px)** — `absolute inset-y-0 left-0 z-30`, même `bg-nav` que le rail. Transition
 200 ms sur `opacity` + `translate-x`. Fermé il garde `pointer-events-none` mais **reste dans l'ordre
 de tabulation** : c'est ce qui permet au focus clavier de le rouvrir. L'ombre portée
 (`shadow-[18px_0_50px_rgba(0,0,0,.45)]`) ne s'applique **qu'en régime replié**, où le panneau
@@ -318,14 +318,14 @@ Deux registres, jamais les deux à la fois sur une même ligne :
 - **Badge d'alerte** — pastille pleine `rouge` ou `or`, pour ce qui réclame une action
   (signalements à traiter, paiements à confirmer). Animée `lp-badge-pop`, plus `lp-pulse-red` si
   urgent, `99+` au-delà de 99.
-- **Compteur** — sinon, la volumétrie en mono `text-[11px] tabular-nums text-muted2`, abrégée en
-  `k` au-delà de 999. Neutre par nature : il informe, il n'appelle pas.
+- **Compteur** — sinon, la volumétrie en mono `text-[11px] tabular-nums text-nav-muted` (encre si
+  la ligne est lime), abrégée en `k` au-delà de 999. Neutre par nature : il informe, il n'appelle pas.
 
 Le rail, lui, ne montre que les **alertes** : une section y hérite du badge le plus urgent de ses
 enfants (rouge > or). La volumétrie n'a pas sa place sur 56 px.
 
 **Le fil vert.** Quand une section est active, le filet vertical qui tient ses sous-liens passe de
-`border-line2` à `border-green/50`. Un trait continu relie ainsi l'icône verte à ses destinations —
+`border-nav-line` à `border-green/50`. Un trait continu relie ainsi l'icône verte à ses destinations —
 la position dans l'arbre se lit sans compter les indentations.
 
 **Modèle de données.** Chaque section porte `id`, `titre`, `domaine` (sigle mono en étiquette),
