@@ -50,9 +50,9 @@ function Badge({ info, className }) {
   );
 }
 
-/** Chip / kbd sur nav : encre sur aplat lime, sinon filet nav. */
-function classeChipNav(surAplat) {
-  return surAplat ? 'border-encre/30 text-encre' : 'border-nav-line text-nav-muted';
+/** Chip / kbd sur nav : encre seulement posé sur un aplat lime (`bg-green`). */
+function classeChipNav({ surAplatLime }) {
+  return surAplatLime ? 'border-encre/30 text-encre' : 'border-nav-line text-nav-muted';
 }
 
 /** Compteur discret — le chiffre du moment d'une destination. */
@@ -180,7 +180,7 @@ function SousLien({ lien, badge, compteur, actif }) {
         <kbd
           className={cn(
             'shrink-0 rounded border px-1 font-mono text-[9px] opacity-0 transition-opacity duration-150 group-hover/lien:opacity-60',
-            classeChipNav(actif),
+            classeChipNav({ surAplatLime: actif }),
           )}
         >
           Alt {raccourci}
@@ -191,7 +191,7 @@ function SousLien({ lien, badge, compteur, actif }) {
         <span
           className={cn(
             'shrink-0 rounded border px-1 py-px text-[8.5px] tracking-wide uppercase',
-            classeChipNav(actif),
+            classeChipNav({ surAplatLime: actif }),
           )}
         >
           bientôt
@@ -347,7 +347,7 @@ function Panneau({
                 <span
                   className={cn(
                     'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
-                    classeChipNav(actif),
+                    classeChipNav({ surAplatLime: actif }),
                   )}
                 >
                   {section.domaine}
@@ -378,7 +378,7 @@ function Panneau({
                 <span
                   className={cn(
                     'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
-                    classeChipNav(actif),
+                    classeChipNav({ surAplatLime: false }),
                   )}
                 >
                   {section.domaine}
