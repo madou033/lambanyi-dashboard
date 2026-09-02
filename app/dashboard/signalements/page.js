@@ -13,6 +13,7 @@ import {
   TYPES_SIGNALEMENT,
   vuePilotageAbsente,
 } from '@/lib/signalements';
+import { TuileCategorie } from '@/components/TuileCategorie';
 import { ModaleAffectationSignalement } from '@/components/ModaleAffectationSignalement';
 import {
   Badge,
@@ -63,6 +64,13 @@ const PERIODES = [
   { code: 'semaine', label: '7 derniers jours' },
   { code: 'mois', label: '30 derniers jours' },
 ];
+
+const TON_TYPE = {
+  depotoir_sauvage: 'red',
+  collecte_manquee: 'gold',
+  bac_plein: 'gold',
+  autre: 'blue',
+};
 
 function horodatage(iso) {
   const d = new Date(iso);
@@ -442,6 +450,18 @@ export default function SignalementsPage() {
     }).length;
   };
 
+  const comptesType = useMemo(
+    function () {
+      return TYPES_SIGNALEMENT.reduce(function (acc, t) {
+        acc[t.code] = signalements.reduce(function (n, s) {
+          return s.type_signalement === t.code ? n + 1 : n;
+        }, 0);
+        return acc;
+      }, {});
+    },
+    [signalements],
+  );
+
   const localisables = filtres.filter(function (s) {
     return s.latitude != null;
   }).length;
@@ -525,6 +545,26 @@ export default function SignalementsPage() {
           },
         ]}
       />
+
+      <div
+        className="lp-rise mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4"
+        style={{ animationDelay: '50ms' }}
+      >
+        {TYPES_SIGNALEMENT.map(function (t) {
+          return (
+            <TuileCategorie
+              key={t.code}
+              label={t.label}
+              chiffre={chargement ? '—' : nombre(comptesType[t.code] || 0)}
+              ton={TON_TYPE[t.code] ?? 'muted'}
+              actif={filtreType === t.code}
+              onClick={function () {
+                setFiltreType(filtreType === t.code ? '' : t.code);
+              }}
+            />
+          );
+        })}
+      </div>
 
       {/* Toolbar */}
       <div className="lp-rise mt-6 flex flex-wrap items-center gap-2" style={{ animationDelay: '60ms' }}>
