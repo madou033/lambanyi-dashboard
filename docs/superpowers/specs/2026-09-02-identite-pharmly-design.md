@@ -4,7 +4,7 @@
 > murs. Référence visuelle fournie par l’utilisateur (dashboard pharmacie
 > blanc / sidebar forêt).
 
-**Statut :** design validé — en attente du plan d’implémentation.
+**Statut :** implémenté localement sur `theme/pharmly-identity` — validation visuelle humaine en cours.
 **App :** `lambanyi-dashboard` uniquement.
 **Référence :** image Pharmly (admin pharmacy) — identité, pas layout.
 **Branche :** `theme/pharmly-identity`.

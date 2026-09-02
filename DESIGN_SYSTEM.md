@@ -78,6 +78,10 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
 
 ## 2. Couleur
 
+**Vert = barre + décision, jamais les murs.** Le vert de marque vit dans la
+sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
+(`bg`, `panel`, …) restent neutres — blanc / charbon froid, pas forêt.
+
 ### 2.1 Tokens — `app/globals.css`
 
 ```css
@@ -105,21 +109,26 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --color-red: var(--lp-red);
   --color-violet: var(--lp-violet);
   --color-encre: var(--lp-encre);
+  --color-nav: var(--lp-nav);
+  --color-nav2: var(--lp-nav2);
+  --color-nav-line: var(--lp-nav-line);
+  --color-nav-txt: var(--lp-nav-txt);
+  --color-nav-muted: var(--lp-nav-muted);
 }
 
-/* Sombre — thème par défaut */
+/* Sombre — thème par défaut. Surfaces charbon froid ; barre nav fixe. */
 :root,
 [data-theme="dark"] {
-  --lp-bg: #0c1a16;
-  --lp-bg2: #0a1613;
-  --lp-panel: #12251f;
-  --lp-panel2: #16302a;
-  --lp-line: #22453a;
-  --lp-line2: #2e5a4b;
-  --lp-txt: #eaf5ef;
-  --lp-muted: #9cc9b4;
-  --lp-muted2: #7ba894;
-  --lp-green: #3ed393;
+  --lp-bg: #101412;
+  --lp-bg2: #0c0f0d;
+  --lp-panel: #171c19;
+  --lp-panel2: #1c2320;
+  --lp-line: #2a322e;
+  --lp-line2: #3a4540;
+  --lp-txt: #e8eeec;
+  --lp-muted: #9aa59f;
+  --lp-muted2: #818d87;
+  --lp-green: #3ddb9a;
   --lp-greend: #2bb87c;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
@@ -128,22 +137,27 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
+  --lp-nav: #0b3d2e;
+  --lp-nav2: #0f4c3a;
+  --lp-nav-line: #1a5c47;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #8fbea8;
   color-scheme: dark;
 }
 
-/* Clair — même langage, contrastes inversés */
+/* Clair — surfaces neutres ; même barre nav que le sombre. */
 [data-theme="light"] {
-  --lp-bg: #eff3f1;
-  --lp-bg2: #e3e9e6;
+  --lp-bg: #f4f7f6;
+  --lp-bg2: #e8eeec;
   --lp-panel: #ffffff;
-  --lp-panel2: #f3f7f5;
-  --lp-line: #d2dcd7;
-  --lp-line2: #aebdb6;
-  --lp-txt: #0c1a16;
-  --lp-muted: #41564c;
-  --lp-muted2: #566c62;
-  --lp-green: #076b41;
-  --lp-greend: #05502f;
+  --lp-panel2: #f3f6f5;
+  --lp-line: #d5ddd9;
+  --lp-line2: #b0bbb5;
+  --lp-txt: #0f1714;
+  --lp-muted: #3d4a44;
+  --lp-muted2: #5a6861;
+  --lp-green: #0b6b42;
+  --lp-greend: #085032;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -151,9 +165,28 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
+  --lp-nav: #0b3d2e;
+  --lp-nav2: #0f4c3a;
+  --lp-nav-line: #1a5c47;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #8fbea8;
   color-scheme: light;
 }
 ```
+
+Hex figés depuis `app/globals.css` (identité Pharmly). Les tokens `nav*`
+sont **identiques** en clair et en sombre : la barre de marque ne suit pas
+le thème du contenu.
+
+| Token | Classe | Rôle | Hex (fixe) |
+|---|---|---|---|
+| `nav` | `bg-nav` | Fond sidebar / rail | `#0b3d2e` |
+| `nav2` | `bg-nav2` | Panneau actif / survol dans la nav | `#0f4c3a` |
+| `nav-line` | `border-nav-line` | Filets dans la nav | `#1a5c47` |
+| `nav-txt` | `text-nav-txt` | Texte principal nav | `#eaf5ef` |
+| `nav-muted` | `text-nav-muted` | Texte secondaire nav | `#8fbea8` |
+
+Item actif de la nav : aplat `green` + `text-encre` (pastille lime sur forêt).
 
 ### 2.2 Sémantique — un token, un sens
 
@@ -181,8 +214,8 @@ Conséquence, les deux thèmes inversent la logique :
 
 | | Accents | Encre sur aplat (`--lp-encre`) |
 |---|---|---|
-| **Sombre** | clairs (`#3ed393`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
-| **Clair** | foncés (`#076b41`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
+| **Sombre** | clairs (`#3ddb9a`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
+| **Clair** | foncés (`#0b6b42`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
 
 D'où la règle : **tout texte posé sur un aplat d'accent utilise `text-encre`**, jamais une couleur
 en dur. `bg-green text-encre` est correct dans les deux thèmes ; `bg-green text-[#04231a]` devient
@@ -191,13 +224,16 @@ illisible en clair, où le vert est foncé.
 Un pictogramme placé sur un aplat (le logo) se dessine en `currentColor` et son conteneur porte
 `text-encre` — il suit ainsi le thème sans duplication.
 
-**Les gris ne sont pas verts.** En clair, `muted` et `muted2` sont des ardoises à peine teintées
-(`#41564c`, `#566c62`), pas des verts pâles : une palette entièrement teintée délave l'écran et rend
-le texte secondaire illisible.
+**Les gris ne sont pas verts — aussi en sombre.** En clair, `muted` et `muted2`
+sont des ardoises (`#3d4a44`, `#5a6861`), pas des verts pâles. En sombre, ce
+sont des gris charbon (`#9aa59f`, `#818d87`), pas du mint. Une palette
+entièrement teintée délave l'écran et rend le texte secondaire illisible.
 
-**Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes : chaque jeton de texte
-contre les quatre surfaces, l'encre sur chaque aplat, et le texte de badge sur sa propre teinte à
-15 %. Il doit rendre **0 échec** — à relancer après toute retouche de palette.
+**Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes :
+chaque jeton de texte contre les quatre surfaces, l'encre sur chaque aplat,
+le texte de badge sur sa propre teinte à 15 %, et `nav-txt` / `nav-muted`
+contre `nav` / `nav2`. Il doit rendre **0 échec** — à relancer après toute
+retouche de palette.
 
 ### 2.4 Teintes dérivées
 
