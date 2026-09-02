@@ -26,21 +26,26 @@
   --color-red: var(--lp-red);
   --color-violet: var(--lp-violet);
   --color-encre: var(--lp-encre);
+  --color-nav: var(--lp-nav);
+  --color-nav2: var(--lp-nav2);
+  --color-nav-line: var(--lp-nav-line);
+  --color-nav-txt: var(--lp-nav-txt);
+  --color-nav-muted: var(--lp-nav-muted);
 }
 
-/* Sombre — thème par défaut */
+/* Sombre — thème par défaut. Surfaces charbon froid ; barre nav fixe. */
 :root,
 [data-theme="dark"] {
-  --lp-bg: #0c1a16;
-  --lp-bg2: #0a1613;
-  --lp-panel: #12251f;
-  --lp-panel2: #16302a;
-  --lp-line: #22453a;
-  --lp-line2: #2e5a4b;
-  --lp-txt: #eaf5ef;
-  --lp-muted: #9cc9b4;
-  --lp-muted2: #7ba894;
-  --lp-green: #3ed393;
+  --lp-bg: #101412;
+  --lp-bg2: #0c0f0d;
+  --lp-panel: #171c19;
+  --lp-panel2: #1c2320;
+  --lp-line: #2a322e;
+  --lp-line2: #3a4540;
+  --lp-txt: #e8eeec;
+  --lp-muted: #9aa59f;
+  --lp-muted2: #818d87;
+  --lp-green: #3ddb9a;
   --lp-greend: #2bb87c;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
@@ -49,22 +54,27 @@
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
+  --lp-nav: #0b3d2e;
+  --lp-nav2: #0f4c3a;
+  --lp-nav-line: #1a5c47;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #8fbea8;
   color-scheme: dark;
 }
 
-/* Clair — même langage, contrastes inversés */
+/* Clair — surfaces neutres ; même barre nav que le sombre. */
 [data-theme="light"] {
-  --lp-bg: #eff3f1;
-  --lp-bg2: #e3e9e6;
+  --lp-bg: #f4f7f6;
+  --lp-bg2: #e8eeec;
   --lp-panel: #ffffff;
-  --lp-panel2: #f3f7f5;
-  --lp-line: #d2dcd7;
-  --lp-line2: #aebdb6;
-  --lp-txt: #0c1a16;
-  --lp-muted: #41564c;
-  --lp-muted2: #566c62;
-  --lp-green: #076b41;
-  --lp-greend: #05502f;
+  --lp-panel2: #f3f6f5;
+  --lp-line: #d5ddd9;
+  --lp-line2: #b0bbb5;
+  --lp-txt: #0f1714;
+  --lp-muted: #3d4a44;
+  --lp-muted2: #5a6861;
+  --lp-green: #0b6b42;
+  --lp-greend: #085032;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -72,6 +82,11 @@
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
+  --lp-nav: #0b3d2e;
+  --lp-nav2: #0f4c3a;
+  --lp-nav-line: #1a5c47;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #8fbea8;
   color-scheme: light;
 }
 
@@ -230,10 +245,7 @@
 }
 
 .lp-topbar {
-  background: linear-gradient(180deg, #102e25, #0c1a16);
-}
-[data-theme="light"] .lp-topbar {
-  background: linear-gradient(180deg, #ffffff, #eff3f1);
+  background: linear-gradient(180deg, var(--lp-panel), var(--lp-bg));
 }
 
 /* ------------------------------------------------------------------ */
