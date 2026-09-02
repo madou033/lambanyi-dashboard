@@ -27,14 +27,10 @@ export function TuileCategorie({ label, chiffre, ton = 'green', sous, onClick, a
     'flex w-full flex-col gap-1 rounded-xl border border-solid p-4 text-left',
     onClick &&
       'cursor-pointer outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue',
-    actif && 'ring-1',
   );
   const style = {
     background: `color-mix(in srgb, ${couleur} 12%, transparent)`,
     borderColor: `color-mix(in srgb, ${couleur} ${actif ? 70 : 40}%, transparent)`,
-    ...(actif
-      ? { boxShadow: `0 0 0 1px color-mix(in srgb, ${couleur} 45%, transparent)` }
-      : {}),
   };
 
   const contenu = (
