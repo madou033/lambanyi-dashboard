@@ -26,6 +26,8 @@ import {
   tonStatut,
 } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const TYPES_MENAGE = {
   residentiel: 'Résidentiel',
@@ -75,6 +77,8 @@ function dansPeriode(iso, periode, instant) {
 
 export default function MenagePage() {
   const { id } = useParams();
+  const { ctx } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [solde, setSolde] = useState(null);
   const [foyer, setFoyer] = useState(null);
   const [abonnements, setAbonnements] = useState([]);
@@ -99,18 +103,61 @@ export default function MenagePage() {
       const maintenant = Date.now();
       const il30j = new Date(maintenant - 30 * 86_400_000).toISOString();
       const [soldeReponse, foyerReponse] = await Promise.all([
-        supabase.from('menages_solde').select('*').eq('menage_id', id).maybeSingle(),
+        (async function () {
+          let requete = supabase.from('menages_solde').select('*').eq('menage_id', id);
+          if (ctx?.lectureCommuneId || ctx?.communeId) {
+            requete = requete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+          }
+          if (ctx?.pmeId) {
+            const liens = await supabase
+              .from('pme_quartiers')
+              .select('quartier_id')
+              .eq('pme_id', ctx.pmeId);
+            const idsQuartiers = (liens.data || []).map(function (lien) {
+              return lien.quartier_id;
+            });
+            requete = requete.in(
+              'quartier_id',
+              idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'],
+            );
+          }
+          return requete.maybeSingle();
+        })(),
         supabase
           .from('menages')
           .select(
-            'id, code_menage, point_repere, telephone_contact, type_menage, nb_personnes, statut, created_at, proprietaire_id, profils(nom_complet), quartiers(nom)',
+            'id, code_menage, point_repere, telephone_contact, type_menage, nb_personnes, statut, created_at, proprietaire_id, quartier_id, profils(nom_complet), quartiers(nom, commune_id)',
           )
           .eq('id', id)
           .maybeSingle(),
       ]);
 
       const soldeCharge = soldeReponse.data || null;
-      const foyerCharge = foyerReponse.data || null;
+      const foyerBrut = foyerReponse.data || null;
+      const communeId = ctx?.lectureCommuneId || ctx?.communeId;
+      const foyerQuartier = relation(foyerBrut?.quartiers);
+      const pmeQuartier = ctx?.pmeId && foyerBrut
+        ? await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId).eq('quartier_id', foyerBrut.quartier_id).maybeSingle()
+        : null;
+      const foyerDansPerimetre =
+        Boolean(foyerBrut) &&
+        Boolean(
+          (communeId && foyerQuartier?.commune_id === communeId) ||
+            (ctx?.pmeId && Boolean(pmeQuartier?.data)) ||
+            (!communeId && !ctx?.pmeId),
+        );
+      const foyerCharge = foyerDansPerimetre ? foyerBrut : null;
+      if (!foyerBrut || !foyerDansPerimetre) {
+        setSolde(null);
+        setFoyer(null);
+        setAbonnements([]);
+        setPaiements([]);
+        setPassages([]);
+        setInstant(maintenant);
+        setChargement(false);
+        setErreur(null);
+        return;
+      }
       const code = foyerCharge?.code_menage || soldeCharge?.code_menage;
 
       if (!soldeCharge && !foyerCharge) {
@@ -204,7 +251,7 @@ export default function MenagePage() {
       );
       if (code) document.title = `Ménage · ${code}`;
     },
-    [id],
+    [id, ctx],
   );
 
   useEffect(
@@ -346,27 +393,27 @@ export default function MenagePage() {
         actions={
           chargement ? null : (
             <>
-              {solde?.abonnement_id ? (
+              {solde?.abonnement_id && ctx?.niveau === 'commune' ? (
                 <Link
                   href={`/dashboard/paiements?q=${encodeURIComponent(code)}`}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-green px-3.5 py-2.5 text-[13px] font-semibold text-encre outline-none transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue"
                 >
                   Encaisser
                 </Link>
-              ) : (
+              ) : peutModifierMenages ? (
                 <Btn variant="green" onClick={function () { setAbonnementOuvert(true); }}>
                   Souscrire
                 </Btn>
-              )}
+              ) : null}
               <Btn variant="ghost" onClick={function () { setQrOuvert(true); }}>
                 QR
               </Btn>
-              <Btn
+              {peutModifierMenages ? <Btn
                 variant={statut === 'suspendu' ? 'green' : 'red'}
                 onClick={function () { setBasculeOuverte(true); }}
               >
                 {statut === 'suspendu' ? 'Réactiver' : 'Suspendre'}
-              </Btn>
+              </Btn> : null}
             </>
           )
         }

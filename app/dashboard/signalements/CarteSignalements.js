@@ -17,7 +17,7 @@ const TUILES = {
   },
 };
 
-const CENTRE_LAMBANYI = [9.615, -13.622];
+const CENTRE_CONAKRY = [9.509, -13.712];
 
 const COULEURS_STATUT = {
   nouveau: 'var(--lp-red)',
@@ -77,7 +77,7 @@ function Recadrage({ points }) {
   return null;
 }
 
-export default function CarteSignalements({ signalements, selectionId, onSelection }) {
+export default function CarteSignalements({ signalements, selectionId, onSelection, centre }) {
   const { theme } = useTheme();
   const tuile = TUILES[theme] ?? TUILES.dark;
 
@@ -92,7 +92,7 @@ export default function CarteSignalements({ signalements, selectionId, onSelecti
 
   return (
     <MapContainer
-      center={CENTRE_LAMBANYI}
+      center={centre || CENTRE_CONAKRY}
       zoom={13}
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}

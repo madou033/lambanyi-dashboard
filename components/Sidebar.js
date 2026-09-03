@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 import { IconDeconnexion, IconMarque, IconPunaise, IconUtilisateur } from '@/components/icons';
 import { LIENS_DISPONIBLES, SECTIONS_NAV, lienEstActif } from '@/lib/navigation';
+import { lienVisible } from '@/lib/contexte';
 
 /**
  * Barre de navigation — cf. DESIGN_SYSTEM.md §3.
@@ -101,7 +102,21 @@ function indexRaccourci(lien) {
  * Purement visuel : le panneau porte la navigation réelle, accessible au
  * clavier. Dupliquer les liens ici doublerait l'arbre pour un lecteur d'écran.
  */
-function Rail({ badges, pathname, initiales }) {
+function sectionsVisibles(ctx) {
+  return SECTIONS_NAV.map(function (section) {
+    return {
+      ...section,
+      liens: section.liens.filter(function (lien) {
+        return lien.disponible && lienVisible(lien, ctx);
+      }),
+    };
+  }).filter(function (section) {
+    return section.liens.length > 0;
+  });
+}
+
+function Rail({ badges, pathname, initiales, ctx }) {
+  const sections = sectionsVisibles(ctx);
   return (
     <div aria-hidden className="flex h-full flex-col items-center px-2">
       <div className="flex h-[60px] shrink-0 items-center">
@@ -111,7 +126,7 @@ function Rail({ badges, pathname, initiales }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 pt-2">
-        {SECTIONS_NAV.map(function (section) {
+        {sections.map(function (section) {
           const Icon = section.Icon;
           const actif = section.liens.some(function (l) {
             return lienEstActif(pathname, l);
@@ -216,6 +231,7 @@ function Panneau({
   role,
   initiales,
   onDeconnexion,
+  ctx,
   menuOuvert,
   setMenuOuvert,
 }) {
@@ -298,7 +314,7 @@ function Panneau({
         aria-label="Navigation principale"
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto px-2 pt-2 pb-3"
       >
-        {SECTIONS_NAV.map(function (section) {
+        {sectionsVisibles(ctx).map(function (section) {
           const Icon = section.Icon;
           const actif = section.liens.some(function (l) {
             return lienEstActif(pathname, l);
@@ -488,6 +504,7 @@ export function Sidebar({
   role,
   initiales,
   onDeconnexion,
+  ctx,
 }) {
   const pathname = usePathname();
   const [survol, setSurvol] = useState(false);
@@ -551,7 +568,7 @@ export function Sidebar({
         !epingle && 'border-r border-nav-line',
       )}
     >
-      {!epingle ? <Rail badges={badges} pathname={pathname} initiales={initiales} /> : null}
+      {!epingle ? <Rail badges={badges} pathname={pathname} initiales={initiales} ctx={ctx} /> : null}
 
       <Panneau
         visible={visible}
@@ -564,6 +581,7 @@ export function Sidebar({
         role={role}
         initiales={initiales}
         onDeconnexion={onDeconnexion}
+        ctx={ctx}
         menuOuvert={menuOuvert}
         setMenuOuvert={setMenuOuvert}
       />
@@ -628,22 +646,25 @@ export function useSidebarEpinglee() {
 /* Raccourcis Alt+1…9 — accès direct aux écrans livrés                 */
 /* ------------------------------------------------------------------ */
 
-export function useRaccourcisNav() {
+export function useRaccourcisNav(ctx) {
   const router = useRouter();
   useEffect(
     function () {
       function surTouche(e) {
         if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         const index = Number.parseInt(e.key, 10) - 1;
-        if (Number.isNaN(index) || index < 0 || index >= LIENS_DISPONIBLES.length) return;
+        const liens = LIENS_DISPONIBLES.filter(function (lien) {
+          return lien.disponible && lienVisible(lien, ctx);
+        }).slice(0, 9);
+        if (Number.isNaN(index) || index < 0 || index >= liens.length) return;
         e.preventDefault();
-        router.push(LIENS_DISPONIBLES[index].to);
+        router.push(liens[index].to);
       }
       window.addEventListener('keydown', surTouche);
       return function () {
         window.removeEventListener('keydown', surTouche);
       };
     },
-    [router],
+    [router, ctx],
   );
 }

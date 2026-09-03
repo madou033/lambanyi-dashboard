@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { useContexte } from '@/components/ContexteProvider';
+import { peutEcrire } from '@/lib/contexte';
 import {
   Badge,
   BandeauErreur,
@@ -177,7 +179,11 @@ function libelleType(code) {
 /* ------------------------------------------------------------------ */
 
 export default function VueDEnsemble() {
+  const { ctx, communeLecture } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [donnees, setDonnees] = useState(null);
+  const [communes, setCommunes] = useState([]);
+  const [referentielCharge, setReferentielCharge] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [rechargement, setRechargement] = useState(0);
   const [dateLongue, setDateLongue] = useState('');
@@ -204,12 +210,109 @@ export default function VueDEnsemble() {
       let annule = false;
 
       async function charger() {
+        const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
+        let quartierIds = null;
+        let menageIds = null;
+        const idsVides = ['00000000-0000-0000-0000-000000000000'];
+        if (communeId) {
+          const [refQuartiers, refMenages] = await Promise.all([
+            supabase.from('quartiers').select('id').eq('commune_id', communeId),
+            supabase.from('menages').select('id').eq('commune_id', communeId),
+          ]);
+          if (refQuartiers.error || refMenages.error) {
+            if (!annule) setErreur('Impossible de charger le périmètre communal.');
+            return;
+          }
+          quartierIds = (refQuartiers.data || []).map(function (ligne) {
+            return ligne.id;
+          });
+          menageIds = (refMenages.data || []).map(function (ligne) {
+            return ligne.id;
+          });
+        }
+        if (ctx?.niveau === 'pme' && ctx.pmeId) {
+          const perimeter = await supabase
+            .from('pme_quartiers')
+            .select('quartier_id')
+            .eq('pme_id', ctx.pmeId);
+          if (perimeter.error) {
+            if (!annule) setErreur(`Impossible de charger le périmètre : ${perimeter.error.message}`);
+            return;
+          }
+          quartierIds = (perimeter.data || []).map(function (ligne) {
+            return ligne.quartier_id;
+          });
+          const menagesPerimetre = await supabase
+            .from('menages')
+            .select('id')
+            .in('quartier_id', quartierIds.length ? quartierIds : idsVides);
+          if (menagesPerimetre.error) {
+            if (!annule) setErreur(`Impossible de charger le périmètre : ${menagesPerimetre.error.message}`);
+            return;
+          }
+          menageIds = (menagesPerimetre.data || []).map(function (ligne) {
+            return ligne.id;
+          });
+        }
         const debutJour = new Date();
         debutJour.setHours(0, 0, 0, 0);
         const il24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
         const debutMois = new Date();
         debutMois.setDate(1);
         debutMois.setHours(0, 0, 0, 0);
+
+        const requeteMenages = supabase.from('menages').select('id', { count: 'exact', head: true });
+        const requeteQuartiers = supabase.from('quartiers').select('id', { count: 'exact', head: true });
+        const requeteSignalements = supabase
+          .from('signalements')
+          .select('id, type_signalement, description, statut, created_at, quartiers!inner(nom, commune_id)')
+          .order('created_at', { ascending: false })
+          .limit(300);
+        const requetePassages = supabase
+          .from('passages')
+          .select('id, statut, created_at, quartiers!inner(commune_id)')
+          .gte('created_at', il24h)
+          .limit(2000);
+
+        if (communeId) {
+          requeteMenages.eq('commune_id', communeId);
+          requeteQuartiers.eq('commune_id', communeId);
+          requeteSignalements.eq('quartiers.commune_id', communeId);
+          requetePassages.eq('quartiers.commune_id', communeId);
+        } else if (quartierIds) {
+          const ids = quartierIds.length ? quartierIds : idsVides;
+          requeteMenages.in('quartier_id', ids);
+          requeteQuartiers.in('id', ids);
+          requeteSignalements.in('quartier_id', ids);
+          requetePassages.in('quartier_id', ids);
+        }
+        const requeteAbonnements = supabase
+          .from('abonnements')
+          .select('id', { count: 'exact', head: true })
+          .eq('statut', 'actif');
+        const requeteSoldes = supabase
+          .from('menages_solde')
+          .select('menage_id', { count: 'exact', head: true })
+          .eq('est_solde', true);
+        const requetePaiements = supabase
+          .from('paiements')
+          .select('id, montant_gnf, penalite_gnf, statut, created_at')
+          .gte('created_at', debutMois.toISOString())
+          .limit(2000);
+        if (menageIds) {
+          const ids = menageIds.length ? menageIds : idsVides;
+          requeteAbonnements.in('menage_id', ids);
+          requeteSoldes.in('menage_id', ids);
+          requetePaiements.in('menage_id', ids);
+        }
+
+        const requeteTournees = supabase
+          .from('tournees')
+          .select('id', { count: 'exact', head: true })
+          .eq('actif', true);
+        if (quartierIds) {
+          requeteTournees.in('quartier_id', quartierIds.length ? quartierIds : idsVides);
+        }
 
         const [
           menages,
@@ -221,34 +324,16 @@ export default function VueDEnsemble() {
           passages,
           paiements,
         ] = await Promise.all([
-          supabase.from('menages').select('id', { count: 'exact', head: true }),
-          supabase.from('quartiers').select('id', { count: 'exact', head: true }),
-          supabase
-            .from('abonnements')
-            .select('id', { count: 'exact', head: true })
-            .eq('statut', 'actif'),
-          supabase
-            .from('menages_solde')
-            .select('menage_id', { count: 'exact', head: true })
-            .eq('est_solde', true),
-          supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true),
-          supabase
-            .from('signalements')
-            .select('id, type_signalement, description, statut, created_at, quartiers(nom)')
-            .order('created_at', { ascending: false })
-            .limit(300),
+          requeteMenages,
+          requeteQuartiers,
+          requeteAbonnements,
+          requeteSoldes,
+          requeteTournees,
+          requeteSignalements,
           // NB : la table `passages` horodate avec `created_at` (et non
           // `horodatage`, qui n'existe pas au schéma).
-          supabase
-            .from('passages')
-            .select('id, statut, created_at')
-            .gte('created_at', il24h)
-            .limit(2000),
-          supabase
-            .from('paiements')
-            .select('id, montant_gnf, penalite_gnf, statut, created_at')
-            .gte('created_at', debutMois.toISOString())
-            .limit(2000),
+          requetePassages,
+          requetePaiements,
         ]);
 
         if (annule) return;
@@ -285,6 +370,48 @@ export default function VueDEnsemble() {
           paiements: paiements.data || [],
           debutJour: debutJour.getTime(),
         });
+
+        if (ctx?.niveau === 'region' && !communeId) {
+          const [refCommunes, refQuartiers, refMenages] = await Promise.all([
+            supabase.from('communes').select('id, nom, code').eq('active', true).order('nom'),
+            supabase.from('quartiers').select('id, commune_id'),
+            supabase.from('menages').select('id, commune_id'),
+          ]);
+          const erreurReferentiel = [refCommunes, refQuartiers, refMenages].find(function (r) {
+            return r.error;
+          });
+          if (erreurReferentiel) {
+            if (!annule) {
+              setCommunes([]);
+              setReferentielCharge(false);
+              setErreur(`Impossible de charger le référentiel régional : ${erreurReferentiel.error.message}`);
+            }
+            return;
+          }
+          if (!annule) {
+            const quartiersParCommune = (refQuartiers.data || []).reduce(function (index, quartier) {
+              index[quartier.commune_id] = (index[quartier.commune_id] || 0) + 1;
+              return index;
+            }, {});
+            const menagesParCommune = (refMenages.data || []).reduce(function (index, menage) {
+              index[menage.commune_id] = (index[menage.commune_id] || 0) + 1;
+              return index;
+            }, {});
+            setCommunes(
+              (refCommunes.data || []).map(function (commune) {
+                return {
+                  ...commune,
+                  quartiers: quartiersParCommune[commune.id] || 0,
+                  menages: menagesParCommune[commune.id] || 0,
+                };
+              }),
+            );
+            setReferentielCharge(true);
+          }
+        } else {
+          setCommunes([]);
+          setReferentielCharge(false);
+        }
       }
 
       charger();
@@ -294,10 +421,12 @@ export default function VueDEnsemble() {
         window.clearInterval(id);
       };
     },
-    [rechargement],
+    [ctx, rechargement],
   );
 
-  const enChargement = !donnees && !erreur;
+  const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
+  const regionSansFiltre = ctx?.niveau === 'region' && !communeId;
+  const enChargement = !donnees || (regionSansFiltre && !referentielCharge);
   const d = donnees;
 
   /* Dérivés */
@@ -391,8 +520,15 @@ export default function VueDEnsemble() {
   return (
     <div className="w-full">
       <PageHeader
-        kicker="Vue d'ensemble · Commune"
-        titre="Situation générale"
+        kicker={regionSansFiltre ? 'Région de Conakry' : 'Vue d’ensemble · Commune'}
+        titre={regionSansFiltre ? 'Vue d’ensemble' : 'Situation générale'}
+        sousTitre={
+          ctx?.niveau === 'pme'
+            ? 'Le pouls opérationnel de votre périmètre de quartiers.'
+            : communeId
+              ? `Le pouls opérationnel de ${communeLecture?.nom ?? 'la commune sélectionnée'}.`
+              : undefined
+        }
         actions={
           <div className="text-right text-[12px] text-muted first-letter:uppercase">
             {dateLongue || ' '}
@@ -413,6 +549,65 @@ export default function VueDEnsemble() {
           });
         }}
       />
+
+      {regionSansFiltre ? (
+        <Bloc
+          titre="Pouls par commune"
+          delai={50}
+          extra={
+            <span className="font-mono text-[10px] text-muted2 tabular-nums">
+              {enChargement ? '— communes' : `${nombre(communes.length)} communes`}
+            </span>
+          }
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {enChargement
+              ? Array.from({ length: 13 }, function (_, index) {
+                  return (
+                    <div key={index} className="rounded-xl border border-line bg-panel p-3">
+                      <span className="block font-mono text-[22px] font-bold leading-none text-txt tabular-nums">
+                        —
+                      </span>
+                      <span className="mt-1 block text-[10px] uppercase text-muted2">Commune</span>
+                    </div>
+                  );
+                })
+              : communes.map(function (commune) {
+                  return (
+                    <Link
+                      key={commune.id}
+                      href={`/dashboard?commune=${commune.id}`}
+                      className="cursor-pointer rounded-xl border border-line bg-panel p-3 outline-none transition-colors hover:border-line2 hover:bg-panel2 focus-visible:ring-2 focus-visible:ring-blue"
+                    >
+                      <span className="block truncate text-[12px] font-semibold text-txt">{commune.nom}</span>
+                      <span className="mt-2 block font-mono text-[22px] font-bold leading-none text-txt tabular-nums">
+                        {nombre(commune.menages)}
+                      </span>
+                      <span className="mt-1 block text-[10px] uppercase text-muted2">foyers · {commune.code}</span>
+                    </Link>
+                  );
+                })}
+          </div>
+        </Bloc>
+      ) : null}
+
+      {!regionSansFiltre && d && d.menages === 0 ? (
+        <div className="lp-rise mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-panel px-4 py-3">
+          <p className="m-0 text-[13px] text-muted">
+            {ctx?.niveau === 'pme'
+              ? 'Aucun foyer enregistré dans ce périmètre.'
+              : 'Aucun foyer enregistré dans cette commune.'}
+          </p>
+          {peutModifierMenages ? (
+            <Link
+              href="/dashboard/menages"
+              className="cursor-pointer rounded-lg bg-green px-3.5 py-2.5 text-[13px] font-semibold text-encre outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue"
+            >
+              Inscrire un ménage
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="lp-rise mt-4" style={{ animationDelay: '60ms' }}>
         <ActionsRapides />

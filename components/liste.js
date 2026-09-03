@@ -257,11 +257,11 @@ export function exporterCsv(nomFichier, entetes, lignes) {
 /* ------------------------------------------------------------------ */
 
 /** Visible uniquement à l'impression — identifie la commune et le filtre. */
-export function EnteteImpression({ titre, contexte }) {
+export function EnteteImpression({ titre, territoire = 'Région de Conakry', contexte }) {
   return (
     <div className="entete-impression" style={{ display: 'none', marginBottom: 12 }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-        Commune de Lambanyi — {titre}
+        {territoire} — {titre}
       </h2>
       <div style={{ fontSize: 12, marginTop: 4 }}>
         {contexte ? `${contexte} · ` : ''}

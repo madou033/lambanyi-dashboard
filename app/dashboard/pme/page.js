@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useContexte } from '@/components/ContexteProvider';
 import {
   Badge,
   BandeauErreur,
@@ -15,7 +16,7 @@ import {
   cn,
   nombre,
 } from '@/components/ui';
-import { BandeauMetriques, Recherche } from '@/components/liste';
+import { BandeauMetriques, CarteListe, Recherche } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 
 const FORM_VIDE = { nom: '', responsable: '', telephone: '', email: '', numeroAgrement: '' };
@@ -31,7 +32,7 @@ const FILTRES = [
 /* Carte de PME                                                        */
 /* ------------------------------------------------------------------ */
 
-function CartePme({ p, rang, onPerimetre, onBasculer }) {
+function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adopter, proprietaire }) {
   return (
     <article
       className={cn(
@@ -107,17 +108,26 @@ function CartePme({ p, rang, onPerimetre, onBasculer }) {
         ) : null}
       </dl>
 
-      <div className="mt-4 flex gap-2">
-        <Btn
+      {editable ? <div className="mt-4 flex gap-2">
+        {proprietaire || adopter ? <Btn
           variant="ghost"
           className="flex-1 justify-center py-2"
           onClick={function () {
             onPerimetre(p);
           }}
         >
-          Périmètre
-        </Btn>
-        <Btn
+          {adopter ? 'Adopter' : 'Périmètre'}
+        </Btn> : null}
+        {proprietaire ? <Btn
+          variant="ghost"
+          className="py-2"
+          onClick={function () {
+            onModifier(p);
+          }}
+        >
+          Modifier
+        </Btn> : null}
+        {proprietaire ? <Btn
           variant="ghost"
           className="py-2"
           onClick={function () {
@@ -125,8 +135,8 @@ function CartePme({ p, rang, onPerimetre, onBasculer }) {
           }}
         >
           {p.actif ? 'Suspendre' : 'Réagréer'}
-        </Btn>
-      </div>
+        </Btn> : null}
+      </div> : null}
     </article>
   );
 }
@@ -136,6 +146,7 @@ function CartePme({ p, rang, onPerimetre, onBasculer }) {
 /* ------------------------------------------------------------------ */
 
 export default function PmePage() {
+  const { ctx } = useContexte();
   const [pmes, setPmes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [collecteurs, setCollecteurs] = useState([]);
@@ -151,27 +162,65 @@ export default function PmePage() {
   const [bascule, setBascule] = useState(null);
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
+  const [editionPme, setEditionPme] = useState(null);
+  const [couvertures, setCouvertures] = useState({});
+  const [erreurQuartiers, setErreurQuartiers] = useState(null);
+  const [quartiersCharges, setQuartiersCharges] = useState(false);
+  const [perimetresCharges, setPerimetresCharges] = useState(false);
+  const estAdmin = ctx?.niveau === 'commune' && ctx.droits?.includes('ecrire');
 
   const charger = useCallback(async function () {
-    const [rPme, rQuartiers, rCollecteurs] = await Promise.all([
+    const communeId = ctx?.lectureCommuneId || ctx?.communeId;
+    const requeteQuartiers = communeId
+      ? supabase.from('quartiers').select('id, nom, code').eq('commune_id', communeId).eq('actif', true).order('nom')
+      : supabase.from('quartiers').select('id, nom, code').eq('actif', true).order('nom');
+    const [rPme, rQuartiers, rCollecteurs, rCreateurs, rLiens] = await Promise.all([
       supabase.from('pme_apercu').select('*').order('nom'),
-      supabase.from('quartiers').select('id, nom, code').eq('actif', true).order('nom'),
+      requeteQuartiers,
       supabase
         .from('profils')
         .select('id, nom_complet, telephone, actif, pme_id')
         .eq('role', 'collecteur')
         .order('nom_complet'),
+      supabase.from('pme').select('id, commune_creatrice_id'),
+      supabase.from('pme_quartiers').select('pme_id, quartier_id'),
     ]);
     setChargement(false);
+    const erreurs = [
+      rPme.error && `PME (${rPme.error.message})`,
+      rQuartiers.error && `quartiers (${rQuartiers.error.message})`,
+      rCollecteurs.error && `collecteurs (${rCollecteurs.error.message})`,
+      rCreateurs.error && `créateurs (${rCreateurs.error.message})`,
+      rLiens.error && `périmètres (${rLiens.error.message})`,
+    ].filter(Boolean);
+    setErreurQuartiers(rQuartiers.error ? `Impossible de charger les quartiers : ${rQuartiers.error.message}` : null);
+    setQuartiersCharges(!rQuartiers.error);
+    setPerimetresCharges(!rLiens.error);
+    if (erreurs.length > 0) {
+      setErreur(`Chargement incomplet : ${erreurs.join(' · ')}`);
+      if (rPme.error) return;
+    } else {
+      setErreur(null);
+    }
     if (rPme.error) {
-      setErreur(`Impossible de charger les PME : ${rPme.error.message}`);
       return;
     }
-    setErreur(null);
-    setPmes(rPme.data || []);
+    const createurs = (rCreateurs.data || []).reduce(function (index, p) {
+      index[p.id] = p.commune_creatrice_id;
+      return index;
+    }, {});
+    const liste = (rPme.data || []).map(function (p) {
+      return { ...p, commune_creatrice_id: createurs[p.id] };
+    });
+    setPmes(ctx?.pmeId ? liste.filter((p) => p.id === ctx.pmeId) : liste);
     setQuartiers(rQuartiers.data || []);
     setCollecteurs(rCollecteurs.data || []);
-  }, []);
+    const locaux = new Set((rQuartiers.data || []).map((q) => q.id));
+    setCouvertures((rLiens.data || []).reduce(function (index, lien) {
+      if (locaux.has(lien.quartier_id)) index[lien.pme_id] = (index[lien.pme_id] || 0) + 1;
+      return index;
+    }, {}));
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -229,24 +278,37 @@ export default function PmePage() {
       return;
     }
     setEnregistrement(true);
-    const { error } = await supabase.from('pme').insert({
+    const requete = editionPme
+      ? supabase.from('pme').update({ nom: form.nom }).eq('id', editionPme.id)
+      : supabase.from('pme').insert({
       nom: form.nom,
+      commune_creatrice_id: ctx.communeId,
       responsable: form.responsable || null,
       telephone: form.telephone || null,
       email: form.email || null,
       numero_agrement: form.numeroAgrement || null,
     });
+    const { error } = await requete;
     setEnregistrement(false);
     if (error) {
       setMessageForm(`Erreur : ${error.message}`);
       return;
     }
     setForm(FORM_VIDE);
+    setEditionPme(null);
     setModaleCreation(false);
     charger();
   }
 
   async function ouvrirPerimetre(pme) {
+    if (
+      estAdmin &&
+      pme.commune_creatrice_id !== ctx.communeId &&
+      (!quartiersCharges || !perimetresCharges)
+    ) {
+      setErreur('Impossible d’ouvrir l’adoption : le référentiel des périmètres PME n’a pas été chargé.');
+      return;
+    }
     setMessageForm(null);
     const { data } = await supabase
       .from('pme_quartiers')
@@ -255,6 +317,9 @@ export default function PmePage() {
     setPerimetre({
       pme,
       ids: (data || []).map(function (x) {
+        return x.quartier_id;
+      }),
+      initialIds: (data || []).map(function (x) {
         return x.quartier_id;
       }),
     });
@@ -276,22 +341,32 @@ export default function PmePage() {
   async function enregistrerPerimetre() {
     setEnregistrement(true);
     setMessageForm(null);
-    // On remplace l'affectation en bloc : plus simple et plus sûr qu'un
-    // diff, la table ne porte que le couple (pme, quartier).
-    const suppr = await supabase.from('pme_quartiers').delete().eq('pme_id', perimetre.pme.id);
-    if (suppr.error) {
+    if (!quartiersCharges || erreurQuartiers) {
       setEnregistrement(false);
-      setMessageForm(`Erreur : ${suppr.error.message}`);
+      setMessageForm('Impossible d’enregistrer : le référentiel local des quartiers n’a pas été chargé.');
       return;
     }
-    if (perimetre.ids.length > 0) {
+    const locaux = new Set(quartiers.map((q) => q.id));
+    const initiauxLocaux = (perimetre.initialIds || []).filter((id) => locaux.has(id));
+    const actuelsLocaux = perimetre.ids.filter((id) => locaux.has(id));
+    const aSupprimer = initiauxLocaux.filter((id) => !actuelsLocaux.includes(id));
+    const aAjouter = actuelsLocaux.filter((id) => !initiauxLocaux.includes(id));
+    if (aSupprimer.length > 0) {
+      const suppr = await supabase.from('pme_quartiers').delete().eq('pme_id', perimetre.pme.id).in('quartier_id', aSupprimer);
+      if (suppr.error) {
+        setEnregistrement(false);
+        setMessageForm(`Erreur : ${suppr.error.message}`);
+        return;
+      }
+    }
+    if (aAjouter.length > 0) {
       const { error } = await supabase.from('pme_quartiers').insert(
-        perimetre.ids.map(function (qid) {
+        aAjouter.map(function (qid) {
           return { pme_id: perimetre.pme.id, quartier_id: qid };
         }),
       );
       if (error) {
-        setEnregistrement(false);
+      setEnregistrement(false);
         setMessageForm(`Erreur : ${error.message}`);
         return;
       }
@@ -332,18 +407,18 @@ export default function PmePage() {
         titre="PME de collecte"
         sousTitre="Opérateurs privés agréés par la commune. Le périmètre définit les quartiers dont ils ont la charge."
         actions={
-          <Btn
+          estAdmin ? <Btn
             variant="green"
             onClick={function () {
               setMessageForm(null);
+              setEditionPme(null);
               setForm(FORM_VIDE);
               setModaleCreation(true);
             }}
           >
             <IconPlus className="size-4" />
             Nouvelle PME
-          </Btn>
-        }
+          </Btn> : null}
       />
 
       <BandeauErreur message={erreur} onReessayer={charger} />
@@ -398,14 +473,9 @@ export default function PmePage() {
       </div>
 
       <div className="mt-7">
-        <Bloc
+        <CarteListe
           titre="Opérateurs agréés"
-          delai={100}
-          extra={
-            <span className="font-mono text-[10px] text-muted2 tabular-nums">
-              {nombre(filtrees.length)} sur {nombre(pmes.length)}
-            </span>
-          }
+          sousTitre={`${nombre(filtrees.length)} sur ${nombre(pmes.length)} PME`}
         >
           {chargement ? (
             <p className="m-0 text-[12px] text-muted2">Chargement de l&apos;annuaire…</p>
@@ -425,12 +495,28 @@ export default function PmePage() {
                     rang={rang}
                     onPerimetre={ouvrirPerimetre}
                     onBasculer={setBascule}
+                    onModifier={function (pme) {
+                      setEditionPme(pme);
+                      setForm({ ...FORM_VIDE, nom: pme.nom });
+                      setMessageForm(null);
+                      setModaleCreation(true);
+                    }}
+                    editable={estAdmin}
+                    adopter={
+                      estAdmin &&
+                      quartiersCharges &&
+                      perimetresCharges &&
+                      !erreurQuartiers &&
+                      p.commune_creatrice_id !== ctx.communeId &&
+                      (couvertures[p.id] || 0) < quartiers.length
+                    }
+                    proprietaire={estAdmin && p.commune_creatrice_id === ctx.communeId}
                   />
                 );
               })}
             </div>
           )}
-        </Bloc>
+        </CarteListe>
       </div>
 
       {/* Rattachement des collecteurs */}
@@ -511,8 +597,8 @@ export default function PmePage() {
         onFermer={function () {
           setModaleCreation(false);
         }}
-        titre="Nouvelle PME"
-        sousTitre="L'opérateur est créé sans périmètre — affectez-lui ensuite ses quartiers."
+        titre={editionPme ? 'Modifier la PME' : 'Nouvelle PME'}
+        sousTitre={editionPme ? 'Seul le nom de la PME créée par votre commune peut être modifié.' : "L'opérateur est créé sans périmètre — affectez-lui ensuite ses quartiers."}
         taille="lg"
         bloquerFermeture={enregistrement}
         pied={
@@ -539,13 +625,15 @@ export default function PmePage() {
         ) : null}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {[
+          {(editionPme ? [
+            { cle: 'nom', label: 'Nom de la PME *', placeholder: 'Ex. Sanita Services', pleine: true },
+          ] : [
             { cle: 'nom', label: 'Nom de la PME *', placeholder: 'Ex. Sanita Services', pleine: true },
             { cle: 'responsable', label: 'Responsable', placeholder: 'Prénom Nom' },
             { cle: 'telephone', label: 'Téléphone', placeholder: '6XX XX XX XX' },
             { cle: 'email', label: 'Email', placeholder: 'contact@pme.gn' },
             { cle: 'numeroAgrement', label: 'Numéro d’agrément', placeholder: 'Optionnel' },
-          ].map(function (c) {
+          ]).map(function (c) {
             return (
               <label key={c.cle} className={cn('block', c.pleine && 'sm:col-span-2')}>
                 <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
