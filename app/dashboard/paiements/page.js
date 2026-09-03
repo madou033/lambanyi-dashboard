@@ -29,6 +29,20 @@ import {
   usePagination,
 } from '@/components/liste';
 import { IconPlus, IconRecherche } from '@/components/icons';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
+import { supabase } from '@/lib/supabase';
+import { filtreCommune } from '@/lib/perimetre';
+
+async function apiHeaders(contentType) {
+  const { data } = await supabase.auth.getSession();
+  const headers = {};
+  if (contentType) headers['Content-Type'] = contentType;
+  if (data.session?.access_token) {
+    headers.Authorization = `Bearer ${data.session.access_token}`;
+  }
+  return headers;
+}
 
 const MODES = [
   { code: 'especes', label: 'Espèces' },
@@ -78,7 +92,7 @@ function dateCourte(iso) {
 /* Guichet d'encaissement                                              */
 /* ------------------------------------------------------------------ */
 
-function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
+function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '', lectureCommuneId }) {
   const [requete, setRequete] = useState('');
   const [resultats, setResultats] = useState([]);
   const [cherche, setCherche] = useState(false);
@@ -120,7 +134,11 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
     setCherche(true);
     setErreur(null);
     try {
-      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(q)}`);
+      const params = new URLSearchParams({ mode: 'recherche', q });
+      if (lectureCommuneId) params.set('lectureCommuneId', lectureCommuneId);
+      const r = await fetch(`/api/paiements?${params.toString()}`, {
+        headers: await apiHeaders(),
+      });
       if (!r.ok) throw new Error();
       const j = await r.json();
       setResultats(j.data || []);
@@ -154,7 +172,9 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
       return;
     }
     try {
-      const r = await fetch(`/api/paiements?mode=solde&abonnement_id=${m.abonnement_id}`);
+      const r = await fetch(`/api/paiements?mode=solde&abonnement_id=${m.abonnement_id}`, {
+        headers: await apiHeaders(),
+      });
       const j = await r.json();
       setSolde(j.data);
       setAvance(j.avance_mois_max || 0);
@@ -171,7 +191,7 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
     try {
       const r = await fetch('/api/paiements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders('application/json'),
         body: JSON.stringify({
           abonnement_id: choisi.abonnement_id,
           mois,
@@ -464,6 +484,7 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
 
 function PaiementsPage() {
   const searchParams = useSearchParams();
+  const { ctx, profil, communeLecture } = useContexte();
   const qUrl = (searchParams.get('q') || '').trim();
   const [liste, setListe] = useState([]);
   const [totaux, setTotaux] = useState({ montant: 0, penalite: 0 });
@@ -497,12 +518,36 @@ function PaiementsPage() {
       const p = parametres();
       p.set('mode', 'recents');
       p.set('limite', '200');
+      if (ctx?.lectureCommuneId) p.set('lectureCommuneId', ctx.lectureCommuneId);
       try {
-        const r = await fetch(`/api/paiements?${p.toString()}`);
+        let perimetre = filtreCommune(supabase.from('quartiers').select('id, nom'), ctx);
+        if (ctx?.pmeId) {
+          const liens = await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId);
+          perimetre = supabase.from('quartiers').select('id, nom').in(
+            'id',
+            liens.data?.map(function (x) { return x.quartier_id; }) || ['00000000-0000-0000-0000-000000000000'],
+          );
+        }
+        const quartiersPerimetre = await perimetre;
+        const nomsQuartiers = new Set((quartiersPerimetre.data || []).map(function (q) { return q.nom; }));
+        const r = await fetch(`/api/paiements?${p.toString()}`, {
+          headers: await apiHeaders(),
+        });
         if (!r.ok) throw new Error();
         const j = await r.json();
-        setListe(j.data || []);
-        setTotaux({ montant: j.total || 0, penalite: j.total_penalite || 0 });
+        const listeChargee =
+          ctx?.pmeId
+            ? (j.data || []).filter(function (paiement) { return nomsQuartiers.has(paiement.quartier); })
+            : j.data || [];
+        setListe(listeChargee);
+        setTotaux({
+          montant: listeChargee.reduce(function (total, paiement) {
+            return total + Number(paiement.montant_gnf || 0);
+          }, 0),
+          penalite: listeChargee.reduce(function (total, paiement) {
+            return total + Number(paiement.penalite_gnf || 0);
+          }, 0),
+        });
         setErreur(null);
       } catch {
         setErreur(
@@ -511,7 +556,7 @@ function PaiementsPage() {
       }
       setChargement(false);
     },
-    [parametres],
+    [parametres, ctx],
   );
 
   useEffect(
@@ -527,7 +572,9 @@ function PaiementsPage() {
   );
 
   useEffect(function () {
-    fetch('/api/paiements?mode=quartiers')
+    apiHeaders().then(function (headers) {
+      return fetch('/api/paiements?mode=quartiers', { headers });
+    })
       .then(function (r) {
         return r.ok ? r.json() : { data: [] };
       })
@@ -567,6 +614,7 @@ function PaiementsPage() {
   function exporter() {
     const p = parametres();
     p.set('mode', 'export');
+    if (ctx?.lectureCommuneId) p.set('lectureCommuneId', ctx.lectureCommuneId);
     window.location.href = `/api/paiements?${p.toString()}`;
   }
 
@@ -580,6 +628,15 @@ function PaiementsPage() {
   }
 
   const filtreActif = fQuartier || fStatut || fMode || fDu || fAu || recherche;
+  const peutEncaisser = ctx?.niveau === 'commune' && peutEcrire(ctx);
+  const territoire =
+    ctx?.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx?.niveau === 'pme'
+        ? profil?.pme?.nom ?? 'PME'
+        : profil?.communes?.nom ?? 'Commune';
 
   return (
     <div className="w-full">
@@ -606,15 +663,17 @@ function PaiementsPage() {
               >
                 Imprimer
               </Btn>
-              <Btn
-                variant="green"
-                onClick={function () {
-                  setGuichet(true);
-                }}
-              >
-                <IconPlus className="size-4" />
-                Encaisser
-              </Btn>
+              {peutEncaisser ? (
+                <Btn
+                  variant="green"
+                  onClick={function () {
+                    setGuichet(true);
+                  }}
+                >
+                  <IconPlus className="size-4" />
+                  Encaisser
+                </Btn>
+              ) : null}
             </>
           }
         />
@@ -653,6 +712,7 @@ function PaiementsPage() {
       <div className="zone-impression">
         <EnteteImpression
           titre="Journal des encaissements"
+          territoire={territoire}
           contexte={`${fQuartier || 'tous quartiers'} · ${montant(totaux.montant)} encaissés`}
         />
 
@@ -798,6 +858,7 @@ function PaiementsPage() {
       <Guichet
         ouvert={guichet}
         requeteInitiale={qUrl}
+        lectureCommuneId={ctx?.lectureCommuneId}
         onFermer={function () {
           setGuichet(false);
         }}

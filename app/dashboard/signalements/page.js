@@ -30,6 +30,8 @@ import {
 } from '@/components/ui';
 import { BandeauMetriques, Recherche, SelectFiltre, exporterCsv } from '@/components/liste';
 import { Bloc, Champ, Modal } from '@/components/ui';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const CarteSignalements = dynamic(
   function () {
@@ -105,6 +107,7 @@ function LigneSignalement({
   onStatut,
   onAffecter,
   enCours,
+  editable = true,
 }) {
   const ouvert = s.statut === 'nouveau' || s.statut === 'en_cours';
   const affectation = libelleAffectation(s);
@@ -202,7 +205,7 @@ function LigneSignalement({
           </a>
         ) : null}
 
-        {ouvert ? (
+        {ouvert && editable ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {s.statut === 'nouveau' ? (
               <button
@@ -263,6 +266,7 @@ function LigneSignalement({
 /* ------------------------------------------------------------------ */
 
 export default function SignalementsPage() {
+  const { ctx } = useContexte();
   const [signalements, setSignalements] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
@@ -270,6 +274,7 @@ export default function SignalementsPage() {
   const [cloture, setCloture] = useState(null);
   const [affectationCible, setAffectationCible] = useState(null);
   const [selectionId, setSelectionId] = useState(null);
+  const [centre, setCentre] = useState([9.509, -13.712]);
   const [instant, setInstant] = useState(0);
 
   const [filtreStatut, setFiltreStatut] = useState('tous');
@@ -279,11 +284,29 @@ export default function SignalementsPage() {
   const [recherche, setRecherche] = useState('');
 
   const charger = useCallback(async function () {
-    const pilotage = await supabase
+    const communeId = ctx?.lectureCommuneId || ctx?.communeId;
+    const quartiersReponse = communeId
+      ? await supabase.from('quartiers').select('id, latitude, longitude').eq('commune_id', communeId).order('nom')
+      : ctx?.pmeId
+        ? await supabase.from('pme_quartiers').select('quartiers!inner(id, latitude, longitude)').eq('pme_id', ctx.pmeId)
+        : { data: [], error: null };
+    const quartiersAutorises = ctx?.pmeId
+      ? (quartiersReponse.data || []).map(function (x) { return x.quartiers; })
+      : quartiersReponse.data || [];
+    const idsQuartiers = quartiersAutorises.map(function (q) { return q.id; });
+    const premierQuartier = quartiersAutorises.find(function (q) { return q.latitude != null && q.longitude != null; });
+    if (premierQuartier) setCentre([Number(premierQuartier.latitude), Number(premierQuartier.longitude)]);
+    let pilotageRequete = supabase
       .from('signalements_pilotage')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(500);
+    if (communeId) {
+      pilotageRequete = pilotageRequete.eq('commune_id', communeId);
+    } else if (ctx?.pmeId) {
+      pilotageRequete = pilotageRequete.in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000']);
+    }
+    const pilotage = await pilotageRequete;
     const instantChargement = Date.now();
     setChargement(false);
 
@@ -301,15 +324,25 @@ export default function SignalementsPage() {
 
     // Compatibilité temporaire tant que la migration créant la vue n'est pas
     // appliquée : table et jointures d'affectation, plus coordonnées de la vue carte.
+    let carteRequete = supabase.from('signalements_carte').select('id, latitude, longitude');
+    if (communeId || ctx?.pmeId) {
+      carteRequete = carteRequete.in(
+        'quartier_id',
+        idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'],
+      );
+    }
     let [base, localises] = await Promise.all([
-      supabase
+      (ctx?.pmeId && !idsQuartiers.length
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
         .from('signalements')
         .select(
           'id, type_signalement, description, statut, created_at, photo_url, quartier_id, assigne_pme_id, assigne_collecteur_id, quartiers(nom), assigne_pme:pme!signalements_assigne_pme_id_fkey(nom), assigne_collecteur:profils!signalements_assigne_collecteur_id_fkey(nom_complet)',
         )
         .order('created_at', { ascending: false })
-        .limit(500),
-      supabase.from('signalements_carte').select('id, latitude, longitude'),
+        .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
+        .limit(500)),
+      carteRequete,
     ]);
 
     // Si les colonnes d'affectation ne sont pas encore migrées non plus, la
@@ -320,6 +353,7 @@ export default function SignalementsPage() {
         .select(
           'id, type_signalement, description, statut, created_at, photo_url, quartier_id, quartiers(nom)',
         )
+        .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
         .order('created_at', { ascending: false })
         .limit(500);
     }
@@ -337,7 +371,7 @@ export default function SignalementsPage() {
 
     setInstant(instantChargement);
     setSignalements(normaliserSignalements(base.data, positions, instantChargement));
-  }, []);
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -674,8 +708,9 @@ export default function SignalementsPage() {
                       selectionne={selectionId === s.id}
                       onSelection={setSelectionId}
                       onStatut={demanderStatut}
-                      onAffecter={setAffectationCible}
+                      onAffecter={peutEcrire(ctx) ? setAffectationCible : function () {}}
                       enCours={enCours}
+                      editable={peutEcrire(ctx)}
                     />
                   );
                 })}
@@ -699,6 +734,7 @@ export default function SignalementsPage() {
                 signalements={filtres}
                 selectionId={selectionId}
                 onSelection={setSelectionId}
+                centre={centre}
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">

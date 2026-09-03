@@ -17,7 +17,7 @@ const TUILES = {
   },
 };
 
-const CENTRE_LAMBANYI = [9.615, -13.622];
+const CENTRE_CONAKRY = [9.509, -13.712];
 
 const LIBELLES_TYPE = {
   bac: 'Bac',
@@ -84,12 +84,13 @@ export default function CartePointsDepot({
   idCourant,
   onChoisir,
   selectionnable = false,
+  centre,
 }) {
   const { theme } = useTheme();
   const tuile = TUILES[theme] ?? TUILES.dark;
   const lat = latitude === '' || latitude == null ? null : Number(latitude);
   const lon = longitude === '' || longitude == null ? null : Number(longitude);
-  const centre = lat != null && lon != null ? [lat, lon] : CENTRE_LAMBANYI;
+  const centreCarte = lat != null && lon != null ? [lat, lon] : centre || CENTRE_CONAKRY;
 
   const existants = (points || []).filter(function (p) {
     return p.latitude != null && p.longitude != null && p.id !== idCourant;
@@ -97,7 +98,7 @@ export default function CartePointsDepot({
 
   return (
     <MapContainer
-      center={centre}
+      center={centreCarte}
       zoom={14}
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}

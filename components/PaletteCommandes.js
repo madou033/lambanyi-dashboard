@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/components/ui';
 import { IconRecherche } from '@/components/icons';
 import { SECTIONS_NAV } from '@/lib/navigation';
+import { lienVisible } from '@/lib/contexte';
 
 function normaliser(s) {
   return String(s ?? '')
@@ -21,9 +22,11 @@ function correspond(requete, ...champs) {
   });
 }
 
-function itemsNav() {
+function itemsNav(ctx) {
   return SECTIONS_NAV.flatMap(function (section) {
-    return section.liens.map(function (lien) {
+    return section.liens.filter(function (lien) {
+      return lien.disponible && lienVisible(lien, ctx);
+    }).map(function (lien) {
       return {
         kind: 'nav',
         id: `nav:${lien.to}`,
@@ -39,7 +42,7 @@ function itemsNav() {
   });
 }
 
-export function PaletteCommandes({ ouvert, onFermer, onNaviguer, actions = [] }) {
+export function PaletteCommandes({ ouvert, onFermer, onNaviguer, actions = [], ctx }) {
   const [requete, setRequete] = useState('');
   const [curseur, setCurseur] = useState(0);
   const [ouvertVu, setOuvertVu] = useState(ouvert);
@@ -47,7 +50,7 @@ export function PaletteCommandes({ ouvert, onFermer, onNaviguer, actions = [] })
 
   const resultats = useMemo(
     function () {
-      const nav = itemsNav().filter(function (i) {
+      const nav = itemsNav(ctx).filter(function (i) {
         return correspond(requete, i.label, i.section, i.domaine, i.description);
       });
       const act = actions
@@ -59,7 +62,7 @@ export function PaletteCommandes({ ouvert, onFermer, onNaviguer, actions = [] })
         });
       return [...nav, ...act];
     },
-    [requete, actions],
+    [requete, actions, ctx],
   );
 
   // Remise à zéro pendant le rendu, au moment où la palette s'ouvre : un

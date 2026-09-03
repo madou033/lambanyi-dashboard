@@ -16,8 +16,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata = {
-  title: 'Lambanyi Propre · Dashboard communal',
-  description: "Pilotage de l'assainissement et de la collecte des déchets de la commune de Lambanyi.",
+  title: 'Lambanyi Propre · Pilotage Conakry',
+  description: "Pilotage de l'assainissement et de la collecte des déchets de Conakry.",
 };
 
 export default function RootLayout({ children }) {

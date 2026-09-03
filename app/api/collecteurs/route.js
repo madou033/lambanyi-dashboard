@@ -1,39 +1,49 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { exigenceApi, refuserEcritureObservateur } from '@/lib/api-auth';
 
 export async function POST(request) {
   try {
+    const auth = await exigenceApi(request, { allowBodyToken: true });
+    if (auth.erreur) return auth.erreur;
+    const { admin: supabaseAdmin, ctx } = auth;
+    const refus = refuserEcritureObservateur(ctx);
+    if (refus) return refus;
     const corps = await request.json();
-    const { email, motDePasse, nomComplet, telephone, tokenAppelant } = corps;
+    const { email, motDePasse, nomComplet, telephone } = corps;
 
-    if (!email || !motDePasse || !nomComplet || !tokenAppelant) {
+    if (!email || !motDePasse || !nomComplet) {
       return NextResponse.json(
         { erreur: 'Champs obligatoires manquants' },
         { status: 400 }
       );
     }
 
-    // 1. Verifier que l'appelant est bien admin ou superviseur
-    const { data: appelant, error: erreurToken } =
-      await supabaseAdmin.auth.getUser(tokenAppelant);
-
-    if (erreurToken || !appelant.user) {
-      return NextResponse.json({ erreur: 'Non autorise' }, { status: 401 });
+    if (!['commune', 'pme'].includes(ctx.niveau)) {
+      return NextResponse.json({ erreur: 'Lecture seule' }, { status: 403 });
     }
 
-    const { data: profilAppelant } = await supabaseAdmin
-      .from('profils')
-      .select('role')
-      .eq('id', appelant.user.id)
-      .single();
-
-    if (!profilAppelant || (profilAppelant.role !== 'admin' && profilAppelant.role !== 'superviseur')) {
-      return NextResponse.json({ erreur: 'Non autorise' }, { status: 403 });
+    let pmeId = corps.pme_id || null;
+    if (ctx.niveau === 'pme') {
+      pmeId = ctx.pmeId;
+    } else if (pmeId) {
+      const pme = await supabaseAdmin
+        .from('pme')
+        .select('id, commune_creatrice_id')
+        .eq('id', pmeId)
+        .eq('actif', true)
+        .maybeSingle();
+      if (pme.error) {
+        return NextResponse.json({ erreur: pme.error.message }, { status: 400 });
+      }
+      const ancrage = await supabaseAdmin
+        .from('pme_quartiers')
+        .select('quartier_id, quartiers!inner(commune_id)')
+        .eq('pme_id', pmeId)
+        .eq('quartiers.commune_id', ctx.communeId)
+        .limit(1);
+      if (!pme.data || (!ancrage.data?.length && pme.data.commune_creatrice_id !== ctx.communeId)) {
+        return NextResponse.json({ erreur: 'Non autorise' }, { status: 403 });
+      }
     }
 
     // 2. Creer le compte auth du collecteur
@@ -59,6 +69,7 @@ export async function POST(request) {
         nom_complet: nomComplet,
         telephone: telephone || null,
         role: 'collecteur',
+        pme_id: pmeId,
       });
 
     if (erreurProfil) {

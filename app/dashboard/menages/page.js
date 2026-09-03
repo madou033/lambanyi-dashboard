@@ -32,6 +32,9 @@ import {
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 import { ModaleAbonnement } from '@/components/ModaleAbonnement';
+import { useContexte } from '@/components/ContexteProvider';
+import { peutEcrire } from '@/lib/contexte';
+import { filtreCommune } from '@/lib/perimetre';
 
 const TYPES_MENAGE = [
   { code: 'residentiel', label: 'Résidentiel' },
@@ -105,6 +108,8 @@ function CelluleSolde({ m }) {
 }
 
 function MenagesPage() {
+  const { ctx, profil, communeLecture } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -124,9 +129,35 @@ function MenagesPage() {
   const [messageForm, setMessageForm] = useState(null);
 
   const charger = useCallback(async function () {
-    const [registre, refQuartiers] = await Promise.all([
+    const idCommune = ctx?.lectureCommuneId || ctx?.communeId;
+    const quartiersReponse = idCommune
+      ? supabase.from('quartiers').select('id, nom').eq('commune_id', idCommune).order('nom')
+      : ctx?.pmeId
+        ? supabase
+            .from('pme_quartiers')
+            .select('quartiers!inner(id, nom)')
+            .eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom').order('nom');
+    const registreRequete = filtreCommune(
       supabase.from('menages_solde').select('*').order('code_menage', { ascending: true }),
-      supabase.from('quartiers').select('id, nom').order('nom'),
+      ctx,
+    );
+    const [registre, refQuartiers] = await Promise.all([
+      ctx?.pmeId
+        ? supabase
+            .from('menages_solde')
+            .select('*')
+            .in(
+              'quartier_id',
+              (await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId)).data?.map(
+                function (x) {
+                  return x.quartier_id;
+                },
+              ) || ['00000000-0000-0000-0000-000000000000'],
+            )
+            .order('code_menage', { ascending: true })
+        : registreRequete,
+      quartiersReponse,
     ]);
     setChargement(false);
     if (registre.error) {
@@ -135,8 +166,14 @@ function MenagesPage() {
     }
     setErreur(null);
     setLignes(registre.data || []);
-    setQuartiers(refQuartiers.data || []);
-  }, []);
+    setQuartiers(
+      ctx?.pmeId
+        ? (refQuartiers.data || []).map(function (x) {
+            return x.quartiers;
+          })
+        : refQuartiers.data || [],
+    );
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -281,6 +318,14 @@ function MenagesPage() {
     })?.label,
     `${nombre(total)} foyers · ${montant(totalDu)} dus`,
   ].join(' · ');
+  const territoire =
+    ctx?.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx?.niveau === 'pme'
+        ? profil?.pme?.nom ?? 'PME'
+        : profil?.communes?.nom ?? 'Commune';
 
   return (
     <div className="w-full">
@@ -302,17 +347,19 @@ function MenagesPage() {
               >
                 Imprimer
               </Btn>
-              <Btn
-                variant="green"
-                onClick={function () {
-                  setMessageForm(null);
-                  setForm(FORM_VIDE);
-                  setModaleMenage(true);
-                }}
-              >
-                <IconPlus className="size-4" />
-                Nouveau ménage
-              </Btn>
+              {peutModifierMenages ? (
+                <Btn
+                  variant="green"
+                  onClick={function () {
+                    setMessageForm(null);
+                    setForm(FORM_VIDE);
+                    setModaleMenage(true);
+                  }}
+                >
+                  <IconPlus className="size-4" />
+                  Nouveau ménage
+                </Btn>
+              ) : null}
             </>
           }
         />
@@ -369,7 +416,11 @@ function MenagesPage() {
       </div>
 
       <div className="zone-impression">
-        <EnteteImpression titre="Registre des ménages" contexte={contexteImpression} />
+        <EnteteImpression
+          titre="Registre des ménages"
+          territoire={territoire}
+          contexte={contexteImpression}
+        />
 
         <CarteListe
           titre="Registre des ménages"
@@ -480,7 +531,7 @@ function MenagesPage() {
                     <BadgeStatut statut={m.statut_menage} />
                   </Td>
                   <Td align="right" className="no-print">
-                    {!m.abonnement_id ? (
+                    {!m.abonnement_id && peutModifierMenages ? (
                       <button
                         type="button"
                         onClick={function () {
@@ -504,7 +555,7 @@ function MenagesPage() {
 
       {/* Nouveau ménage */}
       <Modal
-        ouvert={modaleMenage}
+        ouvert={peutModifierMenages && modaleMenage}
         onFermer={function () {
           setModaleMenage(false);
         }}
