@@ -116,18 +116,19 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   --color-nav-muted: var(--lp-nav-muted);
 }
 
-/* Sombre — thème par défaut. Surfaces charbon froid ; barre nav fixe. */
+/* Sombre — thème par défaut. Surfaces ardoise froide (zéro teinte verte) ;
+   la barre nav reste la seule zone forêt. */
 :root,
 [data-theme="dark"] {
-  --lp-bg: #101412;
-  --lp-bg2: #0c0f0d;
-  --lp-panel: #171c19;
-  --lp-panel2: #1c2320;
-  --lp-line: #2a322e;
-  --lp-line2: #3a4540;
-  --lp-txt: #e8eeec;
-  --lp-muted: #9aa59f;
-  --lp-muted2: #818d87;
+  --lp-bg: #111314;
+  --lp-bg2: #0d0e10;
+  --lp-panel: #1a1c1f;
+  --lp-panel2: #22252a;
+  --lp-line: #2e3238;
+  --lp-line2: #42484f;
+  --lp-txt: #eceef0;
+  --lp-muted: #a4a8ad;
+  --lp-muted2: #8b9096;
   --lp-green: #3ddb9a;
   --lp-greend: #2bb87c;
   --lp-gold: #e8b957;
@@ -145,17 +146,18 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   color-scheme: dark;
 }
 
-/* Clair — surfaces neutres ; même barre nav que le sombre. */
+/* Clair — fond un peu moins lavé ; textes secondaires nettement plus foncés
+   pour que labels / kickers / légendes ne se dissolvent pas dans le blanc. */
 [data-theme="light"] {
-  --lp-bg: #f4f7f6;
-  --lp-bg2: #e8eeec;
+  --lp-bg: #e8ecea;
+  --lp-bg2: #dce1df;
   --lp-panel: #ffffff;
-  --lp-panel2: #f3f6f5;
-  --lp-line: #d5ddd9;
-  --lp-line2: #b0bbb5;
-  --lp-txt: #0f1714;
-  --lp-muted: #3d4a44;
-  --lp-muted2: #5a6861;
+  --lp-panel2: #f0f3f1;
+  --lp-line: #c2cbc6;
+  --lp-line2: #8f9b94;
+  --lp-txt: #0a100e;
+  --lp-muted: #24302b;
+  --lp-muted2: #3a4640;
   --lp-green: #0b6b42;
   --lp-greend: #085032;
   --lp-gold: #7d5a05;
@@ -225,9 +227,12 @@ Un pictogramme placé sur un aplat (le logo) se dessine en `currentColor` et son
 `text-encre` — il suit ainsi le thème sans duplication.
 
 **Les gris ne sont pas verts — aussi en sombre.** En clair, `muted` et `muted2`
-sont des ardoises (`#3d4a44`, `#5a6861`), pas des verts pâles. En sombre, ce
-sont des gris charbon (`#9aa59f`, `#818d87`), pas du mint. Une palette
-entièrement teintée délave l'écran et rend le texte secondaire illisible.
+sont des ardoises foncées (`#24302b`, `#3a4640`), pas des verts pâles : le
+texte secondaire doit rester lisible sur blanc. En sombre, ce sont des gris
+neutres (`#a4a8ad`, `#8b9096`) sur des surfaces ardoise froide (`#111314`,
+`#1a1c1f`), sans teinte verte. Une palette entièrement teintée délave
+l'écran ; trop de vert en sombre et trop de pâleur en clair rendent le
+contenu illisible.
 
 **Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes :
 chaque jeton de texte contre les quatre surfaces, l'encre sur chaque aplat,
