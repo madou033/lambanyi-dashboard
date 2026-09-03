@@ -116,7 +116,7 @@ function MenagesPage() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  const [filtreCommune, setFiltreCommune] = useState('');
+  const [filtreCommuneVal, setFiltreCommuneVal] = useState('');
   const [etat, maj] = useEtatListe(SCHEMA_LISTE);
   const recherche = etat.q;
   const filtreQuartier = etat.quartier;
@@ -204,19 +204,19 @@ function MenagesPage() {
 
   const quartiersFiltres = useMemo(
     function () {
-      if (!filtreCommune) return quartiers;
+      if (!filtreCommuneVal) return quartiers;
       return quartiers.filter(function (q) {
-        return q.commune_id === filtreCommune;
+        return q.commune_id === filtreCommuneVal;
       });
     },
-    [quartiers, filtreCommune],
+    [quartiers, filtreCommuneVal],
   );
 
   const filtrees = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
       return lignes.filter(function (m) {
-        if (filtreCommune && m.commune_id !== filtreCommune) return false;
+        if (filtreCommuneVal && m.commune_id !== filtreCommuneVal) return false;
         if (filtreQuartier && m.quartier !== filtreQuartier) return false;
         if (filtreStatut && m.statut_menage !== filtreStatut) return false;
         if (filtrePaiement === 'a_jour' && m.est_solde !== true) return false;
@@ -228,7 +228,7 @@ function MenagesPage() {
           .includes(q);
       });
     },
-    [lignes, recherche, filtreCommune, filtreQuartier, filtreStatut, filtrePaiement],
+    [lignes, recherche, filtreCommuneVal, filtreQuartier, filtreStatut, filtrePaiement],
   );
 
   const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25, {
@@ -453,9 +453,9 @@ function MenagesPage() {
               />
               <FiltreCommuneRegion
                 ctx={ctx}
-                valeur={filtreCommune}
+                valeur={filtreCommuneVal}
                 onChange={function (v) {
-                  setFiltreCommune(v);
+                  setFiltreCommuneVal(v);
                   maj({ quartier: '' });
                 }}
               />
