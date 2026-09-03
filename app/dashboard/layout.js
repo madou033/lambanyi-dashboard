@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/components/ui';
@@ -20,6 +21,7 @@ import {
   useSidebarEpinglee,
 } from '@/components/Sidebar';
 import { PaletteCommandes } from '@/components/PaletteCommandes';
+import { ContexteProvider, useContexte } from '@/components/ContexteProvider';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -48,6 +50,7 @@ function initialesDe(nomComplet, secours) {
 const LIBELLES_ROLE = {
   admin: 'Administrateur',
   superviseur: 'Superviseur',
+  observateur_regional: 'Observateur régional',
   gerant_pme: 'Gérant PME',
   collecteur: 'Collecteur',
   citoyen: 'Citoyen',
@@ -58,10 +61,28 @@ const LIBELLES_ROLE = {
 /* ------------------------------------------------------------------ */
 
 export default function DashboardLayout({ children }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid h-full place-items-center bg-bg">
+          <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+            Ouverture de la session…
+          </p>
+        </div>
+      }
+    >
+      <ContexteProvider>
+        <DashboardShell>{children}</DashboardShell>
+      </ContexteProvider>
+    </Suspense>
+  );
+}
+
+function DashboardShell({ children }) {
   const router = useRouter();
   const { theme, basculer } = useTheme();
-
-  const [profil, setProfil] = useState(null);
+  const { ctx, profil, communeLecture } = useContexte();
+  const emailSession = null;
   const [enLigne, setEnLigne] = useState(true);
   const [horloge, setHorloge] = useState('--:--:--');
   const [paletteOuverte, setPaletteOuverte] = useState(false);
@@ -69,39 +90,12 @@ export default function DashboardLayout({ children }) {
   const [compteurs, setCompteurs] = useState({});
 
   const { epingle, basculer: basculerEpingle } = useSidebarEpinglee();
-  useRaccourcisNav();
+  useRaccourcisNav(ctx);
 
   const seDeconnecter = useCallback(
     async function () {
       await supabase.auth.signOut();
       router.push('/login');
-    },
-    [router],
-  );
-
-  /* Session + profil */
-  useEffect(
-    function () {
-      let annule = false;
-      async function verifier() {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          router.push('/login');
-          return;
-        }
-        const { data: p, error } = await supabase
-          .from('profils')
-          .select('nom_complet, role')
-          .eq('id', data.session.user.id)
-          .single();
-        if (annule) return;
-        setEnLigne(!error);
-        setProfil(p ?? { nom_complet: data.session.user.email, role: null });
-      }
-      verifier();
-      return function () {
-        annule = true;
-      };
     },
     [router],
   );
@@ -129,6 +123,55 @@ export default function DashboardLayout({ children }) {
       return r.count || 0;
     };
     async function charger() {
+      const communeId = ctx?.lectureCommuneId || null;
+      const requeteSignalements = communeId
+        ? supabase
+            .from('signalements')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .in('statut', ['nouveau', 'en_cours'])
+        : supabase
+            .from('signalements')
+            .select('id', { count: 'exact', head: true })
+            .in('statut', ['nouveau', 'en_cours']);
+      const requetePaiements = communeId
+        ? supabase
+            .from('paiements')
+            .select('id, menages!inner(commune_id)', { count: 'exact', head: true })
+            .eq('menages.commune_id', communeId)
+            .in('statut', ['initie', 'en_attente'])
+        : supabase
+            .from('paiements')
+            .select('id', { count: 'exact', head: true })
+            .in('statut', ['initie', 'en_attente']);
+      const requeteCollecteurs = supabase
+        .from('profils')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'collecteur')
+        .eq('actif', true);
+      if (communeId) requeteCollecteurs.eq('commune_id', communeId);
+      const requeteTournees = communeId
+        ? supabase
+            .from('tournees')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .eq('actif', true)
+        : supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true);
+      const requetePoints = communeId
+        ? supabase
+            .from('points_depot')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .eq('actif', true)
+        : supabase
+            .from('points_depot')
+            .select('id', { count: 'exact', head: true })
+            .eq('actif', true);
+      const requeteTarifs = supabase
+        .from('plans_tarifaires')
+        .select('id', { count: 'exact', head: true })
+        .eq('actif', true);
+      if (communeId) requeteTarifs.eq('commune_id', communeId);
       const [
         signalements,
         paiements,
@@ -140,30 +183,22 @@ export default function DashboardLayout({ children }) {
         tarifs,
         pmes,
       ] = await Promise.all([
-        supabase
-          .from('signalements')
-          .select('id', { count: 'exact', head: true })
-          .in('statut', ['nouveau', 'en_cours']),
-        supabase
-          .from('paiements')
-          .select('id', { count: 'exact', head: true })
-          .in('statut', ['initie', 'en_attente']),
-        supabase.from('menages').select('id', { count: 'exact', head: true }),
+        requeteSignalements,
+        requetePaiements,
+        (ctx?.lectureCommuneId
+          ? supabase
+              .from('menages')
+              .select('id', { count: 'exact', head: true })
+              .eq('commune_id', ctx.lectureCommuneId)
+          : supabase.from('menages').select('id', { count: 'exact', head: true })),
         supabase
           .from('menages')
           .select('id', { count: 'exact', head: true })
           .not('code_menage', 'is', null),
-        supabase
-          .from('profils')
-          .select('id', { count: 'exact', head: true })
-          .eq('role', 'collecteur')
-          .eq('actif', true),
-        supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true),
-        supabase.from('points_depot').select('id', { count: 'exact', head: true }).eq('actif', true),
-        supabase
-          .from('plans_tarifaires')
-          .select('id', { count: 'exact', head: true })
-          .eq('actif', true),
+        requeteCollecteurs,
+        requeteTournees,
+        requetePoints,
+        requeteTarifs,
         supabase.from('pme').select('id', { count: 'exact', head: true }).eq('actif', true),
       ]);
       if (annule) return;
@@ -193,7 +228,7 @@ export default function DashboardLayout({ children }) {
       annule = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [ctx]);
 
   /* Ctrl/Cmd+K — palette de commandes */
   useEffect(function () {
@@ -244,11 +279,17 @@ export default function DashboardLayout({ children }) {
     [theme, basculer, router, seDeconnecter],
   );
 
-  const nom = profil?.nom_complet ?? 'Agent';
   const role = profil ? (LIBELLES_ROLE[profil.role] ?? profil.role) : null;
-  const initiales = initialesDe(profil?.nom_complet, 'AG');
+  const nomBrut = String(profil?.nom_complet ?? '').trim();
+  const roleTexte = String(role ?? '').trim();
+  const pseudoEmail = emailSession ? emailSession.split('@')[0] : null;
+  const nom =
+    !nomBrut || (roleTexte && nomBrut.toLowerCase() === roleTexte.toLowerCase())
+      ? pseudoEmail || 'Agent'
+      : nomBrut;
+  const initiales = initialesDe(nom, 'AG');
 
-  if (!profil) {
+  if (!profil || !ctx) {
     return (
       <div className="grid h-full place-items-center bg-bg">
         <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
@@ -257,6 +298,15 @@ export default function DashboardLayout({ children }) {
       </div>
     );
   }
+
+  const territoire =
+    ctx.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx.niveau === 'pme'
+        ? profil.pme?.nom ?? 'PME'
+        : profil.communes?.nom ?? 'Commune';
 
   return (
     <div
@@ -270,6 +320,7 @@ export default function DashboardLayout({ children }) {
         onBasculerEpingle={basculerEpingle}
         badges={badges}
         compteurs={compteurs}
+        ctx={ctx}
         nom={nom}
         role={role}
         initiales={initiales}
@@ -278,7 +329,22 @@ export default function DashboardLayout({ children }) {
 
       <header className="lp-topbar flex items-center gap-3.5 border-b border-line px-4">
         <div className="hidden rounded-full border border-line2 px-3 py-1 font-mono text-[12px] tracking-wide text-green sm:block">
-          Commune de <b className="text-txt">Lambanyi</b>
+          {ctx.niveau === 'region' && ctx.lectureCommuneId ? (
+            <Link
+              href="/dashboard"
+              className="cursor-pointer text-txt outline-none focus-visible:ring-2 focus-visible:ring-blue"
+            >
+              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
+              <b className="ml-1.5">{`→ ${communeLecture?.nom ?? ctx.lectureCommuneId}`}</b>
+            </Link>
+          ) : (
+            <>
+              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
+              <b className="ml-1.5 text-txt">
+                {ctx.niveau === 'region' ? 'Région' : territoire}
+              </b>
+            </>
+          )}
         </div>
 
         <button
@@ -339,6 +405,7 @@ export default function DashboardLayout({ children }) {
           router.push(to);
         }}
         actions={actionsPalette}
+        ctx={ctx}
       />
     </div>
   );

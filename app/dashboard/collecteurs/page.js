@@ -28,6 +28,9 @@ import {
 } from '@/components/liste';
 import { MiniBarres } from '@/components/graphes';
 import { IconPlus } from '@/components/icons';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
+import { filtreCommune } from '@/lib/perimetre';
 
 const FORM_VIDE = { nomComplet: '', telephone: '', email: '', motDePasse: '' };
 
@@ -56,6 +59,7 @@ const COLONNES = [
 ];
 
 function CollecteursPage() {
+  const { ctx } = useContexte();
   const [collecteurs, setCollecteurs] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
@@ -77,10 +81,9 @@ function CollecteursPage() {
   const charger = useCallback(async function () {
     // `collecteurs_activite` porte déjà les quartiers desservis et le volume
     // de pointages — inutile de recomposer ça côté client.
-    const { data, error } = await supabase
-      .from('collecteurs_activite')
-      .select('*')
-      .order('nom_complet');
+    let requete = supabase.from('collecteurs_activite').select('*').order('nom_complet');
+    requete = filtreCommune(requete, ctx);
+    const { data, error } = await requete;
     setChargement(false);
     if (error) {
       setErreur(`Impossible de charger les collecteurs : ${error.message}`);
@@ -89,7 +92,7 @@ function CollecteursPage() {
     setErreur(null);
     setCollecteurs(data || []);
     setInstant(Date.now());
-  }, []);
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -180,7 +183,10 @@ function CollecteursPage() {
       const { data: session } = await supabase.auth.getSession();
       const reponse = await fetch('/api/collecteurs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.session?.access_token || ''}`,
+        },
         body: JSON.stringify({
           email: form.email,
           motDePasse: form.motDePasse,
@@ -261,7 +267,7 @@ function CollecteursPage() {
             <Btn variant="ghost" onClick={exporter} disabled={filtres.length === 0}>
               Exporter
             </Btn>
-            <Btn
+            {peutEcrire(ctx) ? <Btn
               variant="green"
               onClick={function () {
                 setMessageForm(null);
@@ -271,7 +277,7 @@ function CollecteursPage() {
             >
               <IconPlus className="size-4" />
               Nouveau collecteur
-            </Btn>
+            </Btn> : null}
           </>
         }
       />
@@ -383,7 +389,9 @@ function CollecteursPage() {
                     </span>
                   </span>
                 </Td>
-                <Td mono>{c.telephone || '—'}</Td>
+                <Td mono className="whitespace-nowrap">
+                  {c.telephone || '—'}
+                </Td>
                 <Td className="max-w-[220px] truncate" title={c.quartier || undefined}>
                   {c.quartier || <span className="text-muted2">Aucune tournée affectée</span>}
                 </Td>
@@ -427,6 +435,7 @@ function CollecteursPage() {
                   )}
                 </Td>
                 <Td align="right" className="no-print">
+                  {!peutEcrire(ctx) ? null : (
                   <button
                     type="button"
                     onClick={function () {
@@ -436,6 +445,7 @@ function CollecteursPage() {
                   >
                     {c.actif ? 'Désactiver' : 'Réactiver'}
                   </button>
+                  )}
                 </Td>
               </Tr>
             );

@@ -5,7 +5,7 @@
  * Toolbar, chips, tableau dense, pagination, export CSV.
  */
 
-import { useMemo, useState } from 'react';
+import { Children, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 import { IconChevronBas, IconRecherche } from '@/components/icons';
@@ -92,6 +92,9 @@ export function SelectFiltre({ valeur, onChange, ariaLabel, className, children 
  * @param colonnes [{ cle, label, align?: 'right'|'center', className?, noPrint? }]
  */
 export function Tableau({ colonnes, children, vide }) {
+  const lignes = Children.toArray(children).filter(Boolean);
+  const afficherVide = Boolean(vide) && lignes.length === 0;
+
   return (
     <div>
       <table className="w-full border-collapse">
@@ -120,8 +123,8 @@ export function Tableau({ colonnes, children, vide }) {
           </tr>
         </thead>
         <tbody>
-          {children}
-          {vide ? (
+          {lignes}
+          {afficherVide ? (
             <tr>
               <td colSpan={colonnes.length} className="px-5 py-10 text-center text-[13px] text-muted2">
                 {vide}
@@ -254,11 +257,11 @@ export function exporterCsv(nomFichier, entetes, lignes) {
 /* ------------------------------------------------------------------ */
 
 /** Visible uniquement à l'impression — identifie la commune et le filtre. */
-export function EnteteImpression({ titre, contexte }) {
+export function EnteteImpression({ titre, territoire = 'Région de Conakry', contexte }) {
   return (
     <div className="entete-impression" style={{ display: 'none', marginBottom: 12 }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-        Commune de Lambanyi — {titre}
+        {territoire} — {titre}
       </h2>
       <div style={{ fontSize: 12, marginTop: 4 }}>
         {contexte ? `${contexte} · ` : ''}
@@ -273,9 +276,9 @@ export function EnteteImpression({ titre, contexte }) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Rangée de compteurs propre à un écran de liste — plus compacte que le
+ * Grille de cartes-compteurs propre à un écran de liste — plus compacte que le
  * bandeau pouls du tableau de bord.
- * @param metriques [{ label, valeur, sous?, ton? }]
+ * @param metriques [{ label, valeur, sous?, ton?, onClick?, actif? }]
  */
 export function BandeauMetriques({ metriques, delai = 40 }) {
   const TONS = {
@@ -289,7 +292,7 @@ export function BandeauMetriques({ metriques, delai = 40 }) {
   };
   return (
     <div
-      className="lp-rise mt-5 grid grid-cols-2 gap-y-5 border-y border-line py-4 sm:grid-cols-3 lg:grid-cols-4 lg:divide-x lg:divide-line"
+      className="lp-rise mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
       style={{ animationDelay: `${delai}ms` }}
     >
       {metriques.map(function (m) {
@@ -308,8 +311,10 @@ export function BandeauMetriques({ metriques, delai = 40 }) {
           </>
         );
         const className = cn(
-          'flex flex-col gap-1 px-5 first:pl-1',
-          m.onClick && 'cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue',
+          'flex flex-col gap-1 rounded-xl border border-line bg-panel p-4',
+          m.onClick &&
+            'cursor-pointer outline-none transition-colors hover:bg-panel2 focus-visible:ring-2 focus-visible:ring-blue',
+          m.actif && 'border-green ring-1 ring-green/30',
         );
         return m.onClick ? (
           <button

@@ -102,13 +102,13 @@ export function Kpi({ valeur, label, ton = 'defaut' }) {
  * Compteur du bandeau pouls — cliquable, avec sparkline optionnelle.
  * C'est la pièce maîtresse du tableau de bord.
  */
-export function Compteur({ label, valeur, sous, ton = 'defaut', href, graphe, accent }) {
+export function Compteur({ label, valeur, sous, ton = 'defaut', href, graphe, accent, className }) {
   const contenu = (
     <>
       <span className="text-[9.5px] tracking-[1.8px] text-muted uppercase">{label}</span>
       <span
         className={cn(
-          'font-mono text-[32px] leading-none font-bold tabular-nums',
+          'font-mono text-[24px] leading-none font-bold tabular-nums sm:text-[28px]',
           TONS_TEXTE[ton] ?? TONS_TEXTE.defaut,
         )}
       >
@@ -121,12 +121,16 @@ export function Compteur({ label, valeur, sous, ton = 'defaut', href, graphe, ac
     </>
   );
 
-  const classe =
-    'group flex flex-col gap-1.5 rounded-lg px-5 outline-none first:pl-1 focus-visible:ring-2 focus-visible:ring-blue';
+  const classe = cn(
+    'group flex flex-col gap-1 rounded-xl border border-line bg-panel p-4 outline-none',
+    'focus-visible:ring-2 focus-visible:ring-blue',
+    href && 'cursor-pointer transition-colors hover:bg-panel2',
+    className,
+  );
 
   if (!href) return <div className={classe}>{contenu}</div>;
   return (
-    <Link href={href} className={cn(classe, 'cursor-pointer')}>
+    <Link href={href} className={classe}>
       {contenu}
     </Link>
   );

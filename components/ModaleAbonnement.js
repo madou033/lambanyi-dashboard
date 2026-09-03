@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Btn, Modal, cn, montant } from '@/components/ui';
+import { supabase } from '@/lib/supabase';
 
 const TYPES_MENAGE = {
   residentiel: 'Résidentiel',
@@ -28,8 +29,10 @@ export function ModaleAbonnement({ menage, ouvert, onFermer, onCree }) {
         setPlanChoisi('');
         setMessage(null);
         try {
+          const { data: session } = await supabase.auth.getSession();
           const reponse = await fetch(
             `/api/abonnements?type_menage=${encodeURIComponent(menage.type_menage)}`,
+            { headers: { Authorization: `Bearer ${session.session?.access_token || ''}` } },
           );
           if (!reponse.ok) throw new Error('Service indisponible');
           const resultat = await reponse.json();
@@ -63,7 +66,10 @@ export function ModaleAbonnement({ menage, ouvert, onFermer, onCree }) {
     try {
       const reponse = await fetch('/api/abonnements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
+        },
         body: JSON.stringify({ menage_id: menage.menage_id, plan_id: planChoisi }),
       });
       const resultat = await reponse.json().catch(function () {

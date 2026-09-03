@@ -101,6 +101,15 @@ for (const [nom, p] of THEMES) {
   for (const a of ACCENTS) {
     ligne(`text-${a} sur teinte`, contraste(p[a], melange(p[a], 15, p.panel)));
   }
+
+  console.log('— nav : texte sur barre de marque');
+  for (const manquant of ['nav', 'nav2', 'nav-txt', 'nav-muted']) {
+    if (!p[manquant]) throw new Error(`${nom}: jeton --lp-${manquant} manquant`);
+  }
+  ligne(`nav-txt sur nav`, contraste(p['nav-txt'], p.nav));
+  ligne(`nav-txt sur nav2`, contraste(p['nav-txt'], p.nav2));
+  ligne(`nav-muted sur nav`, contraste(p['nav-muted'], p.nav));
+  ligne(`nav-muted sur nav2`, contraste(p['nav-muted'], p.nav2));
 }
 
 console.log(`\n${echecs === 0 ? '✓ 0 échec' : `✗ ${echecs} échec(s)`} — seuil ${SEUIL}:1`);

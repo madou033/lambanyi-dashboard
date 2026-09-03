@@ -4,8 +4,20 @@ import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useTheme } from '@/components/ThemeProvider';
 
-const CENTRE_LAMBANYI = [9.615, -13.622];
+const TUILES = {
+  light: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap',
+  },
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  },
+};
+
+const CENTRE_CONAKRY = [9.509, -13.712];
 
 const LIBELLES_TYPE = {
   bac: 'Bac',
@@ -72,10 +84,13 @@ export default function CartePointsDepot({
   idCourant,
   onChoisir,
   selectionnable = false,
+  centre,
 }) {
+  const { theme } = useTheme();
+  const tuile = TUILES[theme] ?? TUILES.dark;
   const lat = latitude === '' || latitude == null ? null : Number(latitude);
   const lon = longitude === '' || longitude == null ? null : Number(longitude);
-  const centre = lat != null && lon != null ? [lat, lon] : CENTRE_LAMBANYI;
+  const centreCarte = lat != null && lon != null ? [lat, lon] : centre || CENTRE_CONAKRY;
 
   const existants = (points || []).filter(function (p) {
     return p.latitude != null && p.longitude != null && p.id !== idCourant;
@@ -83,15 +98,12 @@ export default function CartePointsDepot({
 
   return (
     <MapContainer
-      center={centre}
+      center={centreCarte}
       zoom={14}
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}
     >
-      <TileLayer
-        attribution="&copy; OpenStreetMap"
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer key={theme} attribution={tuile.attribution} url={tuile.url} />
 
       {selectionnable ? <CapteurClic onChoisir={onChoisir} /> : null}
       <Recentrer lat={lat} lon={lon} />

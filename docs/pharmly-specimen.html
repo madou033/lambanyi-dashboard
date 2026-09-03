@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pharmly — spécimen clair / sombre</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --sans: "DM Sans", "Segoe UI", system-ui, sans-serif;
+      --display: "Instrument Serif", Georgia, serif;
+      --mono: "SFMono-Regular", Consolas, "Roboto Mono", ui-monospace, monospace;
+    }
+
+    [data-theme="dark"] {
+      --lp-bg: #111314;
+      --lp-bg2: #0d0e10;
+      --lp-panel: #1a1c1f;
+      --lp-panel2: #22252a;
+      --lp-line: #2e3238;
+      --lp-line2: #42484f;
+      --lp-txt: #f1f2f3;
+      --lp-muted: #b4b8bd;
+      --lp-muted2: #9aa0a6;
+      --lp-green: #83af99;
+      --lp-gold: #e8b957;
+      --lp-teal: #35c9b1;
+      --lp-blue: #7bbbe4;
+      --lp-red: #ff7b85;
+      --lp-violet: #b3a6f0;
+      --lp-encre: #05130e;
+      --lp-nav: #1c352e;
+      --lp-nav2: #25423a;
+      --lp-nav-line: #3c5349;
+      --lp-nav-txt: #eaf5ef;
+      --lp-nav-muted: #9bb5aa;
+    }
+
+    [data-theme="light"] {
+      --lp-bg: #e8ecea;
+      --lp-bg2: #dce1df;
+      --lp-panel: #ffffff;
+      --lp-panel2: #f0f3f1;
+      --lp-line: #c2cbc6;
+      --lp-line2: #8f9b94;
+      --lp-txt: #0a100e;
+      --lp-muted: #24302b;
+      --lp-muted2: #334039;
+      --lp-green: #376249;
+      --lp-gold: #7d5a05;
+      --lp-teal: #076358;
+      --lp-blue: #1d5b83;
+      --lp-red: #a81d29;
+      --lp-violet: #4f3d9c;
+      --lp-encre: #ffffff;
+      --lp-nav: #1c352e;
+      --lp-nav2: #25423a;
+      --lp-nav-line: #3c5349;
+      --lp-nav-txt: #eaf5ef;
+      --lp-nav-muted: #9bb5aa;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--sans);
+      background: #0a0b0c;
+      color: #d6d8db;
+      overflow: hidden;
+    }
+
+    .chrome {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 16px;
+      border-bottom: 1px solid #2a2d32;
+      background: #111214;
+    }
+    .chrome h1 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .4px;
+    }
+    .chrome p {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: #8b9096;
+    }
+    .vues { display: flex; gap: 6px; }
+    .vues button {
+      cursor: pointer;
+      border: 1px solid #3a3e44;
+      background: transparent;
+      color: #c8ccd0;
+      font: 600 11px/1 var(--sans);
+      padding: 7px 10px;
+      border-radius: 8px;
+    }
+    .vues button[aria-pressed="true"] {
+      background: #83af99;
+      border-color: #83af99;
+      color: #05130e;
+    }
+
+    .scene {
+      height: calc(100% - 48px);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    body.vue-sombre .scene,
+    body.vue-clair .scene { grid-template-columns: 1fr; }
+    body.vue-sombre [data-pane="light"],
+    body.vue-clair [data-pane="dark"] { display: none; }
+
+    .pane { min-width: 0; min-height: 0; overflow: auto; }
+    .pane + .pane { border-left: 1px solid #2a2d32; }
+
+    .app {
+      min-height: 100%;
+      display: grid;
+      grid-template-columns: 228px 1fr;
+      background: var(--lp-bg);
+      color: var(--lp-txt);
+    }
+
+    .nav {
+      background: var(--lp-nav);
+      border-right: 1px solid var(--lp-nav-line);
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .marque {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px;
+    }
+    .logo {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: var(--lp-green); color: var(--lp-encre);
+      display: grid; place-items: center;
+      box-shadow: 0 4px 12px color-mix(in srgb, var(--lp-green) 35%, transparent);
+      flex-shrink: 0;
+    }
+    .marque strong {
+      display: block;
+      font-size: 13.5px;
+      color: var(--lp-nav-txt);
+    }
+    .marque small {
+      display: block;
+      margin-top: 2px;
+      font-size: 9px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--lp-nav-muted);
+    }
+
+    .nav-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .lien {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px;
+      border-radius: 12px;
+      color: var(--lp-nav-muted);
+      font-size: 12.5px;
+    }
+    .lien svg { width: 19px; height: 19px; flex-shrink: 0; }
+    .lien em { margin-left: auto; font: 400 11px/1 var(--mono); font-style: normal; }
+    .lien.actif {
+      background: var(--lp-green);
+      color: var(--lp-encre);
+      font-weight: 600;
+    }
+    .lien.actif em { color: var(--lp-encre); }
+    .chip {
+      margin-left: 4px;
+      font: 500 8.5px/1 var(--mono);
+      letter-spacing: .4px;
+      border: 1px solid var(--lp-nav-line);
+      color: var(--lp-nav-muted);
+      border-radius: 4px;
+      padding: 2px 4px;
+    }
+    .lien.actif .chip {
+      border-color: color-mix(in srgb, var(--lp-encre) 30%, transparent);
+      color: var(--lp-encre);
+    }
+    .sous {
+      margin: 0 0 4px 27px;
+      padding-left: 12px;
+      border-left: 1px solid color-mix(in srgb, var(--lp-green) 50%, transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .sous a {
+      display: flex;
+      justify-content: space-between;
+      color: var(--lp-nav-muted);
+      text-decoration: none;
+      font-size: 12.5px;
+      padding: 5px 8px;
+      border-radius: 8px;
+    }
+    .sous a.actif { color: var(--lp-nav-txt); background: var(--lp-nav2); font-weight: 600; }
+    .badge {
+      min-width: 18px;
+      text-align: center;
+      border-radius: 99px;
+      padding: 1px 5px;
+      font: 700 10px/14px var(--mono);
+      background: var(--lp-red);
+      color: var(--lp-encre);
+    }
+    .profil {
+      border-top: 1px solid var(--lp-nav-line);
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .avatar {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--lp-nav2);
+      color: var(--lp-nav-txt);
+      display: grid; place-items: center;
+      font: 700 11px/1 var(--mono);
+    }
+    .profil b { display: block; font-size: 12.5px; color: var(--lp-nav-txt); }
+    .profil span { font-size: 11px; color: var(--lp-nav-muted); }
+
+    .corps { min-width: 0; display: flex; flex-direction: column; }
+    .topbar {
+      height: 60px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--lp-line);
+      background: var(--lp-bg);
+    }
+    .topbar .etat {
+      font-size: 11px;
+      color: var(--lp-muted2);
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--lp-muted);
+    }
+    .dot {
+      width: 7px; height: 7px; border-radius: 99px;
+      background: var(--lp-teal);
+    }
+    .main { padding: 16px 20px 28px; }
+
+    .kicker {
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--lp-muted2);
+    }
+    h2.titre {
+      margin: 4px 0 0;
+      font-family: var(--display);
+      font-size: 27px;
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--lp-txt);
+    }
+    .sous-titre {
+      margin: 6px 0 0;
+      max-width: 42rem;
+      font-size: 12.5px;
+      color: var(--lp-muted);
+    }
+
+    .kpis {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .kpi {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid var(--lp-line);
+      background: var(--lp-panel);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .kpi.actif {
+      border-color: var(--lp-green);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--lp-green) 30%, transparent);
+    }
+    .kpi .lab {
+      font-size: 9.5px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--lp-muted);
+    }
+    .kpi .val {
+      font: 700 24px/1 var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi .hint { font-size: 11px; color: var(--lp-muted2); }
+    .t-txt { color: var(--lp-txt); }
+    .t-red { color: var(--lp-red); }
+    .t-gold { color: var(--lp-gold); }
+    .t-teal { color: var(--lp-teal); }
+    .t-green { color: var(--lp-green); }
+    .t-blue { color: var(--lp-blue); }
+
+    .bloc-titre {
+      margin: 36px 0 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--lp-line);
+      font-size: 11px;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      color: var(--lp-muted);
+    }
+
+    .tuiles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .tuile {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid;
+    }
+    .tuile .lab {
+      font-size: 11px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--lp-muted);
+    }
+    .tuile .val {
+      font: 700 24px/1 var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .tuile .hint { font-size: 11px; color: var(--lp-muted2); }
+
+    .panel {
+      margin-top: 16px;
+      border: 1px solid var(--lp-line);
+      background: var(--lp-panel);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--lp-line);
+    }
+    .panel-head h3 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      color: var(--lp-muted);
+    }
+    .search {
+      min-width: 180px;
+      border: 1px solid var(--lp-line);
+      background: var(--lp-bg);
+      color: var(--lp-txt);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font: 400 12.5px/1 var(--sans);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      padding: 10px 16px;
+      font-size: 12.5px;
+      border-bottom: 1px solid var(--lp-line);
+    }
+    th {
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--lp-muted2);
+      font-weight: 600;
+    }
+    td { color: var(--lp-txt); }
+    td.muted { color: var(--lp-muted); }
+    td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+    tr:last-child td { border-bottom: 0; }
+
+    .statut {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 99px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .actions { display: flex; gap: 8px; margin-top: 20px; }
+    .btn {
+      cursor: default;
+      border-radius: 10px;
+      padding: 8px 14px;
+      font: 600 12.5px/1 var(--sans);
+      border: 1px solid transparent;
+    }
+    .btn-green { background: var(--lp-green); color: var(--lp-encre); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--lp-txt);
+      border-color: var(--lp-line);
+    }
+
+    .lecture {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .swatch {
+      border: 1px solid var(--lp-line);
+      background: var(--lp-panel);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .swatch p { margin: 0; }
+    .n1 { font-size: 14px; color: var(--lp-txt); }
+    .n2 { margin-top: 6px; font-size: 12.5px; color: var(--lp-muted); }
+    .n3 { margin-top: 6px; font-size: 11px; color: var(--lp-muted2); }
+
+    @media (max-width: 1180px) {
+      .kpis, .tuiles, .lecture { grid-template-columns: 1fr 1fr; }
+      .app { grid-template-columns: 56px 1fr; }
+      .nav .txt, .nav small, .nav em, .nav .chip, .sous, .profil b, .profil span { display: none; }
+      .nav-body .lien { justify-content: center; padding: 10px 0; }
+      .lien.actif { border-radius: 12px; }
+    }
+  </style>
+</head>
+<body class="vue-split">
+  <header class="chrome">
+    <div>
+      <h1>Spécimen Pharmly — jetons actuels</h1>
+      <p>Côte à côte pour juger : sombre sans teinte verte · clair avec textes lisibles. Fichier jetable, pas l’app.</p>
+    </div>
+    <div class="vues">
+      <button type="button" data-vue="split" aria-pressed="true">Côte à côte</button>
+      <button type="button" data-vue="sombre" aria-pressed="false">Sombre seul</button>
+      <button type="button" data-vue="clair" aria-pressed="false">Clair seul</button>
+    </div>
+  </header>
+  <div class="scene" id="scene"></div>
+
+  <script>
+    const icone = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M7 7V5h10v2M6 7l1.2 13h9.6L18 7"/></svg>';
+
+    function tuile(label, n, hint, color, pct) {
+      return `<div class="tuile" style="background:color-mix(in srgb, var(--lp-${color}) 12%, transparent);border-color:color-mix(in srgb, var(--lp-${color}) ${pct}%, transparent)">
+        <span class="lab">${label}</span>
+        <span class="val t-${color}">${n}</span>
+        <span class="hint">${hint}</span>
+      </div>`;
+    }
+
+    function statut(label, color) {
+      return `<span class="statut" style="color:var(--lp-${color});background:color-mix(in srgb, var(--lp-${color}) 15%, transparent)">${label}</span>`;
+    }
+
+    function app(theme, label) {
+      return `<div class="pane" data-pane="${theme === "dark" ? "dark" : "light"}">
+        <div class="app" data-theme="${theme}">
+          <aside class="nav">
+            <div class="marque">
+              <div class="logo">${icone}</div>
+              <div class="txt">
+                <strong>Lambanyi Propre</strong>
+                <small>Assainissement · Commune</small>
+              </div>
+            </div>
+            <div class="nav-body">
+              <div class="lien">${icone} Tableau de bord <em>12</em><span class="chip">OPS</span></div>
+              <div class="lien actif">${icone} Signalements <span class="badge">8</span><span class="chip">OPS</span></div>
+              <div class="sous">
+                <a class="actif" href="#">File <span class="badge">8</span></a>
+                <a href="#">Carte</a>
+              </div>
+              <div class="lien">${icone} Tournées <em>4</em><span class="chip">OPS</span></div>
+              <div class="lien">${icone} Ménages <em>1.2k</em><span class="chip">ADM</span></div>
+            </div>
+            <div class="profil">
+              <div class="avatar">AK</div>
+              <div><b>Awa Koné</b><span>Opérateur · Plateau</span></div>
+            </div>
+          </aside>
+          <div class="corps">
+            <div class="topbar">
+              <span class="etat">${label}</span>
+              <span class="pill"><span class="dot"></span> API en ligne</span>
+            </div>
+            <div class="main">
+              <div class="kicker">Opérations · File du jour</div>
+              <h2 class="titre">Signalements</h2>
+              <p class="sous-titre">Les écrits secondaires (ce paragraphe, le kicker au-dessus, les légendes sous les chiffres) doivent rester lisibles — surtout en clair, où ils disparaissaient dans le blanc.</p>
+
+              <div class="kpis">
+                <div class="kpi actif">
+                  <span class="lab">Ouverts</span>
+                  <span class="val t-txt">47</span>
+                  <span class="hint">file active</span>
+                </div>
+                <div class="kpi">
+                  <span class="lab">En retard</span>
+                  <span class="val t-gold">8</span>
+                  <span class="hint">&gt; 24 h</span>
+                </div>
+                <div class="kpi">
+                  <span class="lab">Nouveaux</span>
+                  <span class="val t-red">12</span>
+                  <span class="hint">sans affectation</span>
+                </div>
+                <div class="kpi">
+                  <span class="lab">Résolus</span>
+                  <span class="val t-teal">124</span>
+                  <span class="hint">30 derniers jours</span>
+                </div>
+              </div>
+
+              <div class="bloc-titre">Types</div>
+              <div class="tuiles">
+                ${tuile("Dépotoir sauvage", "9", "critique", "red", 70)}
+                ${tuile("Collecte manquée", "14", "vigilance", "gold", 40)}
+                ${tuile("Bac plein", "6", "vigilance", "blue", 40)}
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>4 résultats</h3>
+                  <input class="search" value="Recherche un quartier…" readonly />
+                </div>
+                <table>
+                  <thead>
+                    <tr><th>Réf.</th><th>Type</th><th>Quartier</th><th>Statut</th><th>Âge</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="mono">SIG-1842</td>
+                      <td>Dépotoir sauvage</td>
+                      <td class="muted">Plateau</td>
+                      <td>${statut("Nouveau", "red")}</td>
+                      <td class="mono muted">2 h</td>
+                    </tr>
+                    <tr>
+                      <td class="mono">SIG-1838</td>
+                      <td>Collecte manquée</td>
+                      <td class="muted">Cocody</td>
+                      <td>${statut("En cours", "gold")}</td>
+                      <td class="mono muted">18 h</td>
+                    </tr>
+                    <tr>
+                      <td class="mono">SIG-1821</td>
+                      <td>Bac plein</td>
+                      <td class="muted">Yopougon</td>
+                      <td>${statut("Résolu", "teal")}</td>
+                      <td class="mono muted">2 j</td>
+                    </tr>
+                    <tr>
+                      <td class="mono">SIG-1814</td>
+                      <td>Autre</td>
+                      <td class="muted">Adjamé</td>
+                      <td>${statut("Rejeté", "muted2")}</td>
+                      <td class="mono muted">5 j</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="actions">
+                <span class="btn btn-green">Affecter</span>
+                <span class="btn btn-ghost">Exporter CSV</span>
+              </div>
+
+              <div class="lecture">
+                <div class="swatch">
+                  <p class="n1">Texte principal — titres, cellules, chiffres.</p>
+                  <p class="n2">Texte secondaire — sous-titres, quartiers, explications.</p>
+                  <p class="n3">Texte tertiaire — kicker, légendes, en-têtes de tableau.</p>
+                </div>
+                <div class="swatch">
+                  <p class="n2">En sombre, le mur autour de cette carte doit être ardoise, pas vert. Le vert reste dans la barre à gauche et dans le bouton Affecter.</p>
+                  <p class="n3" style="margin-top:8px">Si un de ces trois niveaux disparaît, le thème n’est pas bon.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    document.getElementById("scene").innerHTML =
+      app("dark", "Thème sombre") + app("light", "Thème clair");
+
+    document.querySelectorAll(".vues button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const vue = btn.getAttribute("data-vue");
+        document.body.className = vue === "split" ? "vue-split" : "vue-" + vue;
+        document.querySelectorAll(".vues button").forEach(function (b) {
+          b.setAttribute("aria-pressed", String(b === btn));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -4,8 +4,20 @@ import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useTheme } from '@/components/ThemeProvider';
 
-const CENTRE_LAMBANYI = [9.615, -13.622];
+const TUILES = {
+  light: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap',
+  },
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  },
+};
+
+const CENTRE_CONAKRY = [9.509, -13.712];
 
 const COULEURS_STATUT = {
   nouveau: 'var(--lp-red)',
@@ -65,7 +77,10 @@ function Recadrage({ points }) {
   return null;
 }
 
-export default function CarteSignalements({ signalements, selectionId, onSelection }) {
+export default function CarteSignalements({ signalements, selectionId, onSelection, centre }) {
+  const { theme } = useTheme();
+  const tuile = TUILES[theme] ?? TUILES.dark;
+
   const localises = useMemo(
     function () {
       return signalements.filter(function (s) {
@@ -77,15 +92,12 @@ export default function CarteSignalements({ signalements, selectionId, onSelecti
 
   return (
     <MapContainer
-      center={CENTRE_LAMBANYI}
+      center={centre || CENTRE_CONAKRY}
       zoom={13}
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}
     >
-      <TileLayer
-        attribution="&copy; OpenStreetMap"
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer key={theme} attribution={tuile.attribution} url={tuile.url} />
       <Recadrage points={localises} />
       {localises.map(function (s) {
         return (
