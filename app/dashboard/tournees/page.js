@@ -18,6 +18,7 @@ import { BandeauMetriques } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
 /** Numérotation ISO 8601 : 1 = lundi … 7 = dimanche. */
 const JOURS = [
@@ -121,6 +122,7 @@ export default function TourneesPage() {
 
   const [voirSuspendues, setVoirSuspendues] = useState(true);
   const [filtreQuartier, setFiltreQuartier] = useState('');
+  const [filtreCommune, setFiltreCommune] = useState('');
 
   const [modaleCreation, setModaleCreation] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -131,10 +133,10 @@ export default function TourneesPage() {
 
   const charger = useCallback(async function () {
     const q = ctx?.communeId || ctx?.lectureCommuneId
-      ? supabase.from('quartiers').select('id, nom').eq('commune_id', ctx.lectureCommuneId || ctx.communeId).order('nom')
+      ? supabase.from('quartiers').select('id, nom, commune_id').eq('commune_id', ctx.lectureCommuneId || ctx.communeId).order('nom')
       : ctx?.pmeId
-        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom)').eq('pme_id', ctx.pmeId)
-        : supabase.from('quartiers').select('id, nom').order('nom');
+        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom, commune_id)').eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom, commune_id').order('nom');
     const qResult = await q;
     const quartiersAutorises = ctx?.pmeId
       ? (qResult.data || []).map(function (x) { return x.quartiers; })
@@ -193,15 +195,37 @@ export default function TourneesPage() {
     [charger],
   );
 
+  const quartiersFiltres = useMemo(
+    function () {
+      if (!filtreCommune) return quartiers;
+      return quartiers.filter(function (q) {
+        return q.commune_id === filtreCommune;
+      });
+    },
+    [quartiers, filtreCommune],
+  );
+
+  const idsQuartiersFiltres = useMemo(
+    function () {
+      return new Set(
+        quartiersFiltres.map(function (q) {
+          return q.id;
+        }),
+      );
+    },
+    [quartiersFiltres],
+  );
+
   const visibles = useMemo(
     function () {
       return tournees.filter(function (t) {
         if (!voirSuspendues && !t.actif) return false;
+        if (filtreCommune && !idsQuartiersFiltres.has(t.quartier_id)) return false;
         if (filtreQuartier && t.quartier_id !== filtreQuartier) return false;
         return true;
       });
     },
-    [tournees, voirSuspendues, filtreQuartier],
+    [tournees, voirSuspendues, filtreQuartier, filtreCommune, idsQuartiersFiltres],
   );
 
   const parJour = useMemo(
@@ -391,6 +415,14 @@ export default function TourneesPage() {
           Afficher les suspendues
         </Chip>
         <div className="flex-1" />
+        <FiltreCommuneRegion
+          ctx={ctx}
+          valeur={filtreCommune}
+          onChange={function (v) {
+            setFiltreCommune(v);
+            setFiltreQuartier('');
+          }}
+        />
         <Selecteur
           value={filtreQuartier}
           aria-label="Filtrer par quartier"
@@ -399,7 +431,7 @@ export default function TourneesPage() {
           }}
         >
           <option value="">Tous les quartiers</option>
-          {quartiers.map(function (q) {
+          {quartiersFiltres.map(function (q) {
             return (
               <option key={q.id} value={q.id}>
                 {q.nom}

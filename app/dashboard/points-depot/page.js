@@ -31,6 +31,7 @@ import { IconPlus } from '@/components/icons';
 import { supabase } from '@/lib/supabase';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
 async function apiHeaders(contentType) {
   const { data } = await supabase.auth.getSession();
@@ -111,6 +112,7 @@ export default function PointsDepotPage() {
   const [fQuartier, setFQuartier] = useState('');
   const [fType, setFType] = useState('');
   const [fProprio, setFProprio] = useState('tous');
+  const [filtreCommune, setFiltreCommune] = useState('');
 
   const [modale, setModale] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -120,7 +122,10 @@ export default function PointsDepotPage() {
 
   const charger = useCallback(async function () {
     try {
-      const r = await fetch('/api/points-depot', { headers: await apiHeaders() });
+      const qs = ctx?.lectureCommuneId
+        ? `?lectureCommuneId=${encodeURIComponent(ctx.lectureCommuneId)}`
+        : '';
+      const r = await fetch(`/api/points-depot${qs}`, { headers: await apiHeaders() });
       if (!r.ok) throw new Error();
       const j = await r.json();
       setPoints(j.data || []);
@@ -131,7 +136,7 @@ export default function PointsDepotPage() {
       );
     }
     setChargement(false);
-  }, []);
+  }, [ctx?.lectureCommuneId]);
 
   useEffect(
     function () {
@@ -141,9 +146,13 @@ export default function PointsDepotPage() {
       // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       charger();
-      apiHeaders().then(function (headers) {
-        return fetch('/api/points-depot?mode=referentiel', { headers });
-      })
+      const qs = ctx?.lectureCommuneId
+        ? `?mode=referentiel&lectureCommuneId=${encodeURIComponent(ctx.lectureCommuneId)}`
+        : '?mode=referentiel';
+      apiHeaders()
+        .then(function (headers) {
+          return fetch(`/api/points-depot${qs}`, { headers });
+        })
         .then(function (r) {
           return r.ok ? r.json() : { quartiers: [], pme: [] };
         })
@@ -154,7 +163,12 @@ export default function PointsDepotPage() {
             supabase
               .from('quartiers')
               .select('id, latitude, longitude')
-              .in('id', j.quartiers.map(function (q) { return q.id; }))
+              .in(
+                'id',
+                j.quartiers.map(function (q) {
+                  return q.id;
+                }),
+              )
               .order('nom')
               .limit(1)
               .maybeSingle()
@@ -170,13 +184,35 @@ export default function PointsDepotPage() {
           setPmes([]);
         });
     },
-    [charger],
+    [charger, ctx?.lectureCommuneId],
+  );
+
+  const quartiersFiltres = useMemo(
+    function () {
+      if (!filtreCommune) return quartiers;
+      return quartiers.filter(function (q) {
+        return q.commune_id === filtreCommune;
+      });
+    },
+    [quartiers, filtreCommune],
   );
 
   const filtres = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
+      const idsQuartiersCommune = filtreCommune
+        ? new Set(
+            quartiers
+              .filter(function (quartier) {
+                return quartier.commune_id === filtreCommune;
+              })
+              .map(function (quartier) {
+                return quartier.id;
+              }),
+          )
+        : null;
       return points.filter(function (p) {
+        if (idsQuartiersCommune && !idsQuartiersCommune.has(p.quartier_id)) return false;
         if (fQuartier && p.quartier_id !== fQuartier) return false;
         if (fType && p.type_point !== fType) return false;
         if (fProprio === 'commune' && p.proprietaire !== 'Commune') return false;
@@ -189,7 +225,7 @@ export default function PointsDepotPage() {
           .includes(q);
       });
     },
-    [points, recherche, fQuartier, fType, fProprio],
+    [points, recherche, fQuartier, fType, fProprio, filtreCommune, quartiers],
   );
 
   const { page, pages, total, tranche, setPage } = usePagination(filtres, 20);
@@ -415,6 +451,14 @@ export default function PointsDepotPage() {
             outils={
               <div className="flex flex-wrap items-center gap-2">
                 <Recherche valeur={recherche} onChange={setRecherche} placeholder="Nom, repère…" />
+                <FiltreCommuneRegion
+                  ctx={ctx}
+                  valeur={filtreCommune}
+                  onChange={function (v) {
+                    setFiltreCommune(v);
+                    setFQuartier('');
+                  }}
+                />
                 <SelectFiltre valeur={fType} onChange={setFType} ariaLabel="Filtrer par type">
                   <option value="">Tous les types</option>
                   {TYPES.map(function (t) {
@@ -431,7 +475,7 @@ export default function PointsDepotPage() {
                   ariaLabel="Filtrer par quartier"
                 >
                   <option value="">Tous les quartiers</option>
-                  {quartiers.map(function (q) {
+                  {quartiersFiltres.map(function (q) {
                     return (
                       <option key={q.id} value={q.id}>
                         {q.nom}

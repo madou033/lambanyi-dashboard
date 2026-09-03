@@ -33,6 +33,7 @@ import {
 import { IconPlus } from '@/components/icons';
 import { ModaleAbonnement } from '@/components/ModaleAbonnement';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 import { peutEcrire } from '@/lib/contexte';
 import { filtreCommune } from '@/lib/perimetre';
 
@@ -115,6 +116,7 @@ function MenagesPage() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
+  const [filtreCommune, setFiltreCommune] = useState('');
   const [etat, maj] = useEtatListe(SCHEMA_LISTE);
   const recherche = etat.q;
   const filtreQuartier = etat.quartier;
@@ -131,13 +133,13 @@ function MenagesPage() {
   const charger = useCallback(async function () {
     const idCommune = ctx?.lectureCommuneId || ctx?.communeId;
     const quartiersReponse = idCommune
-      ? supabase.from('quartiers').select('id, nom').eq('commune_id', idCommune).order('nom')
+      ? supabase.from('quartiers').select('id, nom, commune_id').eq('commune_id', idCommune).order('nom')
       : ctx?.pmeId
         ? supabase
             .from('pme_quartiers')
-            .select('quartiers!inner(id, nom)')
+            .select('quartiers!inner(id, nom, commune_id)')
             .eq('pme_id', ctx.pmeId)
-        : supabase.from('quartiers').select('id, nom').order('nom');
+        : supabase.from('quartiers').select('id, nom, commune_id').order('nom');
     const registreRequete = filtreCommune(
       supabase.from('menages_solde').select('*').order('code_menage', { ascending: true }),
       ctx,
@@ -200,10 +202,21 @@ function MenagesPage() {
     [etat.q, maj, rechercheSaisie],
   );
 
+  const quartiersFiltres = useMemo(
+    function () {
+      if (!filtreCommune) return quartiers;
+      return quartiers.filter(function (q) {
+        return q.commune_id === filtreCommune;
+      });
+    },
+    [quartiers, filtreCommune],
+  );
+
   const filtrees = useMemo(
     function () {
       const q = recherche.trim().toLowerCase();
       return lignes.filter(function (m) {
+        if (filtreCommune && m.commune_id !== filtreCommune) return false;
         if (filtreQuartier && m.quartier !== filtreQuartier) return false;
         if (filtreStatut && m.statut_menage !== filtreStatut) return false;
         if (filtrePaiement === 'a_jour' && m.est_solde !== true) return false;
@@ -215,7 +228,7 @@ function MenagesPage() {
           .includes(q);
       });
     },
-    [lignes, recherche, filtreQuartier, filtreStatut, filtrePaiement],
+    [lignes, recherche, filtreCommune, filtreQuartier, filtreStatut, filtrePaiement],
   );
 
   const { page, pages, total, tranche, setPage } = usePagination(filtrees, 25, {
@@ -438,6 +451,14 @@ function MenagesPage() {
                 }}
                 placeholder="Code, repère, téléphone…"
               />
+              <FiltreCommuneRegion
+                ctx={ctx}
+                valeur={filtreCommune}
+                onChange={function (v) {
+                  setFiltreCommune(v);
+                  maj({ quartier: '' });
+                }}
+              />
               <SelectFiltre
                 valeur={filtreQuartier}
                 onChange={function (v) {
@@ -446,7 +467,7 @@ function MenagesPage() {
                 ariaLabel="Filtrer par quartier"
               >
                 <option value="">Tous les quartiers</option>
-                {quartiers.map(function (q) {
+                {quartiersFiltres.map(function (q) {
                   return (
                     <option key={q.id} value={q.nom}>
                       {q.nom}
