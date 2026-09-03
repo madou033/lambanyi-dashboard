@@ -180,6 +180,7 @@ function libelleType(code) {
 
 export default function VueDEnsemble() {
   const { ctx, communeLecture } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [donnees, setDonnees] = useState(null);
   const [communes, setCommunes] = useState([]);
   const [referentielCharge, setReferentielCharge] = useState(false);
@@ -597,7 +598,7 @@ export default function VueDEnsemble() {
               ? 'Aucun foyer enregistré dans ce périmètre.'
               : 'Aucun foyer enregistré dans cette commune.'}
           </p>
-          {peutEcrire(ctx) ? (
+          {peutModifierMenages ? (
             <Link
               href="/dashboard/menages"
               className="cursor-pointer rounded-lg bg-green px-3.5 py-2.5 text-[13px] font-semibold text-encre outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue"

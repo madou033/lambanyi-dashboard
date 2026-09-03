@@ -78,6 +78,7 @@ function dansPeriode(iso, periode, instant) {
 export default function MenagePage() {
   const { id } = useParams();
   const { ctx } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [solde, setSolde] = useState(null);
   const [foyer, setFoyer] = useState(null);
   const [abonnements, setAbonnements] = useState([]);
@@ -399,7 +400,7 @@ export default function MenagePage() {
                 >
                   Encaisser
                 </Link>
-              ) : peutEcrire(ctx) ? (
+              ) : peutModifierMenages ? (
                 <Btn variant="green" onClick={function () { setAbonnementOuvert(true); }}>
                   Souscrire
                 </Btn>
@@ -407,7 +408,7 @@ export default function MenagePage() {
               <Btn variant="ghost" onClick={function () { setQrOuvert(true); }}>
                 QR
               </Btn>
-              {peutEcrire(ctx) ? <Btn
+              {peutModifierMenages ? <Btn
                 variant={statut === 'suspendu' ? 'green' : 'red'}
                 onClick={function () { setBasculeOuverte(true); }}
               >

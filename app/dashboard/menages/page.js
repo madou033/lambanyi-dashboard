@@ -109,6 +109,7 @@ function CelluleSolde({ m }) {
 
 function MenagesPage() {
   const { ctx, profil, communeLecture } = useContexte();
+  const peutModifierMenages = ctx?.niveau === 'commune' && peutEcrire(ctx);
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -346,7 +347,7 @@ function MenagesPage() {
               >
                 Imprimer
               </Btn>
-              {peutEcrire(ctx) ? (
+              {peutModifierMenages ? (
                 <Btn
                   variant="green"
                   onClick={function () {
@@ -530,7 +531,7 @@ function MenagesPage() {
                     <BadgeStatut statut={m.statut_menage} />
                   </Td>
                   <Td align="right" className="no-print">
-                    {!m.abonnement_id ? (
+                    {!m.abonnement_id && peutModifierMenages ? (
                       <button
                         type="button"
                         onClick={function () {
@@ -554,7 +555,7 @@ function MenagesPage() {
 
       {/* Nouveau ménage */}
       <Modal
-        ouvert={modaleMenage}
+        ouvert={peutModifierMenages && modaleMenage}
         onFermer={function () {
           setModaleMenage(false);
         }}

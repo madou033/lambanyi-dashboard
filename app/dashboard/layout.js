@@ -123,6 +123,55 @@ function DashboardShell({ children }) {
       return r.count || 0;
     };
     async function charger() {
+      const communeId = ctx?.lectureCommuneId || null;
+      const requeteSignalements = communeId
+        ? supabase
+            .from('signalements')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .in('statut', ['nouveau', 'en_cours'])
+        : supabase
+            .from('signalements')
+            .select('id', { count: 'exact', head: true })
+            .in('statut', ['nouveau', 'en_cours']);
+      const requetePaiements = communeId
+        ? supabase
+            .from('paiements')
+            .select('id, menages!inner(commune_id)', { count: 'exact', head: true })
+            .eq('menages.commune_id', communeId)
+            .in('statut', ['initie', 'en_attente'])
+        : supabase
+            .from('paiements')
+            .select('id', { count: 'exact', head: true })
+            .in('statut', ['initie', 'en_attente']);
+      const requeteCollecteurs = supabase
+        .from('profils')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'collecteur')
+        .eq('actif', true);
+      if (communeId) requeteCollecteurs.eq('commune_id', communeId);
+      const requeteTournees = communeId
+        ? supabase
+            .from('tournees')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .eq('actif', true)
+        : supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true);
+      const requetePoints = communeId
+        ? supabase
+            .from('points_depot')
+            .select('id, quartiers!inner(commune_id)', { count: 'exact', head: true })
+            .eq('quartiers.commune_id', communeId)
+            .eq('actif', true)
+        : supabase
+            .from('points_depot')
+            .select('id', { count: 'exact', head: true })
+            .eq('actif', true);
+      const requeteTarifs = supabase
+        .from('plans_tarifaires')
+        .select('id', { count: 'exact', head: true })
+        .eq('actif', true);
+      if (communeId) requeteTarifs.eq('commune_id', communeId);
       const [
         signalements,
         paiements,
@@ -134,14 +183,8 @@ function DashboardShell({ children }) {
         tarifs,
         pmes,
       ] = await Promise.all([
-        supabase
-          .from('signalements')
-          .select('id', { count: 'exact', head: true })
-          .in('statut', ['nouveau', 'en_cours']),
-        supabase
-          .from('paiements')
-          .select('id', { count: 'exact', head: true })
-          .in('statut', ['initie', 'en_attente']),
+        requeteSignalements,
+        requetePaiements,
         (ctx?.lectureCommuneId
           ? supabase
               .from('menages')
@@ -152,17 +195,10 @@ function DashboardShell({ children }) {
           .from('menages')
           .select('id', { count: 'exact', head: true })
           .not('code_menage', 'is', null),
-        supabase
-          .from('profils')
-          .select('id', { count: 'exact', head: true })
-          .eq('role', 'collecteur')
-          .eq('actif', true),
-        supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true),
-        supabase.from('points_depot').select('id', { count: 'exact', head: true }).eq('actif', true),
-        supabase
-          .from('plans_tarifaires')
-          .select('id', { count: 'exact', head: true })
-          .eq('actif', true),
+        requeteCollecteurs,
+        requeteTournees,
+        requetePoints,
+        requeteTarifs,
         supabase.from('pme').select('id', { count: 'exact', head: true }).eq('actif', true),
       ]);
       if (annule) return;
