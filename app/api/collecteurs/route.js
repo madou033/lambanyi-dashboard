@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { exigenceApi } from '@/lib/api-auth';
+import { exigenceApi, refuserEcritureObservateur } from '@/lib/api-auth';
 
 export async function POST(request) {
   try {
-    const auth = await exigenceApi(request);
+    const auth = await exigenceApi(request, { allowBodyToken: true });
     if (auth.erreur) return auth.erreur;
     const { admin: supabaseAdmin, ctx } = auth;
+    const refus = refuserEcritureObservateur(ctx);
+    if (refus) return refus;
     const corps = await request.json();
     const { email, motDePasse, nomComplet, telephone } = corps;
 
@@ -16,7 +18,7 @@ export async function POST(request) {
       );
     }
 
-    if (!ctx || !['commune', 'pme'].includes(ctx.niveau)) {
+    if (!['commune', 'pme'].includes(ctx.niveau)) {
       return NextResponse.json({ erreur: 'Lecture seule' }, { status: 403 });
     }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exigenceApi, refuserEcritureObservateur } from "@/lib/api-auth";
+import { exigenceApi, menageDansContexte, refuserEcritureObservateur } from "@/lib/api-auth";
 
 async function bornerParContexte(sb, req, ctx, p, colonne) {
   let communeId = ctx.niveau === "commune" ? ctx.communeId : p.get("lectureCommuneId");
@@ -94,7 +94,10 @@ export async function GET(request) {
   const mode = p.get("mode") || "recents";
 
   if (mode === "quartiers") {
-    const r = await sb.from("quartiers").select("nom").eq("actif", true).order("nom");
+    let req = sb.from("quartiers").select("id, nom").eq("actif", true).order("nom");
+    const borne = await bornerParContexte(sb, req, ctx, p, "id");
+    if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
+    const r = await borne;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     return NextResponse.json({ data: r.data.map(function (q) { return q.nom; }) });
   }
@@ -128,7 +131,16 @@ export async function GET(request) {
     const r = await sb.rpc("solde_abonnement", { p_abonnement_id: id });
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     const solde = Array.isArray(r.data) ? r.data[0] : r.data;
-    const pr = await sb.from("parametres").select("valeur").eq("cle", "avance_mois_max").maybeSingle();
+    let communeId = ctx.niveau === "commune" ? ctx.communeId : p.get("lectureCommuneId");
+    if (!communeId) {
+      const quartier = await sb.from("quartiers").select("commune_id")
+        .eq("id", accesResultat.data[0].quartier_id).single();
+      if (quartier.error) return NextResponse.json({ error: quartier.error.message }, { status: 400 });
+      communeId = quartier.data.commune_id;
+    }
+    let prReq = sb.from("parametres").select("valeur").eq("cle", "avance_mois_max");
+    if (communeId) prReq = prReq.eq("commune_id", communeId);
+    const pr = await prReq.maybeSingle();
     const avance = pr.data ? parseInt(pr.data.valeur, 10) : 0;
     return NextResponse.json({ data: solde, avance_mois_max: avance });
   }
@@ -193,12 +205,25 @@ export async function POST(request) {
     return NextResponse.json({ error: "Nombre de mois invalide" }, { status: 400 });
   }
 
+  const menage = await sb.from("abonnements")
+    .select("menage_id")
+    .eq("id", abonnementId)
+    .maybeSingle();
+  if (menage.error) return NextResponse.json({ error: menage.error.message }, { status: 400 });
+  if (!menage.data) return NextResponse.json({ error: "Abonnement introuvable" }, { status: 404 });
+  const accessible = await menageDansContexte(sb, menage.data.menage_id, ctx);
+  if (accessible.error) return NextResponse.json({ error: accessible.error.message }, { status: 400 });
+  if (!accessible.data) return NextResponse.json({ error: "Abonnement introuvable" }, { status: 404 });
+
   const rs = await sb.rpc("solde_abonnement", { p_abonnement_id: abonnementId });
   if (rs.error) return NextResponse.json({ error: rs.error.message }, { status: 400 });
   const solde = Array.isArray(rs.data) ? rs.data[0] : rs.data;
   if (!solde) return NextResponse.json({ error: "Abonnement introuvable" }, { status: 404 });
 
-  const pr = await sb.from("parametres").select("valeur").eq("cle", "avance_mois_max").maybeSingle();
+  const pr = await sb.from("parametres").select("valeur")
+    .eq("cle", "avance_mois_max")
+    .eq("commune_id", ctx.communeId)
+    .maybeSingle();
   const avance = pr.data ? parseInt(pr.data.valeur, 10) : 0;
   const maxMois = solde.mois_dus + avance;
 

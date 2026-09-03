@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
-import { exigenceApi, refuserEcritureObservateur } from "@/lib/api-auth";
+import { exigenceApi, menageDansContexte, refuserEcritureObservateur } from "@/lib/api-auth";
 
 export async function GET(request) {
   const auth = await exigenceApi(request);
   if (auth.erreur) return auth.erreur;
-  const { admin: sb } = auth;
+  const { admin: sb, ctx } = auth;
   const type = request.nextUrl.searchParams.get("type_menage");
+  const lectureCommuneId = request.nextUrl.searchParams.get("lectureCommuneId");
   let req = sb.from("plans_tarifaires")
     .select("id, code, libelle, montant_gnf, passages_par_semaine, type_menage")
     .eq("actif", true)
     .order("passages_par_semaine");
+  const communeId = ctx.niveau === "commune" ? ctx.communeId : lectureCommuneId;
+  if (communeId) req = req.eq("commune_id", communeId);
   if (type) req = req.eq("type_menage", type);
   const r = await req;
   if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
@@ -29,6 +32,9 @@ export async function POST(request) {
   if (!menageId || !planId) {
     return NextResponse.json({ error: "Menage ou plan manquant" }, { status: 400 });
   }
+  const accessible = await menageDansContexte(sb, menageId, ctx);
+  if (accessible.error) return NextResponse.json({ error: accessible.error.message }, { status: 400 });
+  if (!accessible.data) return NextResponse.json({ error: "Menage introuvable" }, { status: 404 });
 
   const dejaLa = await sb.from("abonnements")
     .select("id").eq("menage_id", menageId).neq("statut", "resilie").limit(1);
