@@ -16,6 +16,8 @@ async function pmeAutorisee(sb, ctx, pmeId, quartiers) {
 }
 
 async function verifierPerimetre(sb, ctx, quartierId, pmeId) {
+  if (!quartierId && !pmeId) return { data: null, error: null };
+  if (ctx.niveau === "pme" && pmeId !== ctx.pmeId) return { data: null, error: null };
   const quartiers = await quartiersDuContexte(sb, ctx);
   if (quartiers.error) return quartiers;
   if (quartierId && !quartiers.data.includes(quartierId)) return { data: null, error: null };
@@ -54,7 +56,11 @@ export async function GET(request) {
 
   let req = sb.from("points_depot_detail").select("*").order("nom");
   if (ctx.niveau === "pme") {
-    req = req.eq("pme_id", ctx.pmeId);
+    if (quartiers.data.length) {
+      req = req.eq("pme_id", ctx.pmeId).in("quartier_id", quartiers.data);
+    } else {
+      req = req.eq("id", "00000000-0000-0000-0000-000000000000");
+    }
   } else if (quartiers.data.length) {
     req = req.in("quartier_id", quartiers.data);
   } else {
