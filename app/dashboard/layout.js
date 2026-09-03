@@ -137,8 +137,11 @@ function DashboardShell({ children }) {
       const requetePaiements = communeId
         ? supabase
             .from('paiements')
-            .select('id, menages!inner(commune_id)', { count: 'exact', head: true })
-            .eq('menages.commune_id', communeId)
+            .select('id, abonnements!inner(menages!inner(commune_id))', {
+              count: 'exact',
+              head: true,
+            })
+            .eq('abonnements.menages.commune_id', communeId)
             .in('statut', ['initie', 'en_attente'])
         : supabase
             .from('paiements')

@@ -268,9 +268,15 @@ export default function VueDEnsemble() {
           .select('id, type_signalement, description, statut, created_at, quartiers!inner(nom, commune_id)')
           .order('created_at', { ascending: false })
           .limit(300);
+        // passages n'a pas de FK vers quartiers : le quartier passe par le menage
+        // (passages.menage_id → menages.quartier_id / commune_id).
         const requetePassages = supabase
           .from('passages')
-          .select('id, statut, created_at, quartiers!inner(commune_id)')
+          .select(
+            communeId || quartierIds
+              ? 'id, statut, created_at, menages!inner(commune_id, quartier_id)'
+              : 'id, statut, created_at',
+          )
           .gte('created_at', il24h)
           .limit(2000);
 
@@ -278,13 +284,13 @@ export default function VueDEnsemble() {
           requeteMenages.eq('commune_id', communeId);
           requeteQuartiers.eq('commune_id', communeId);
           requeteSignalements.eq('quartiers.commune_id', communeId);
-          requetePassages.eq('quartiers.commune_id', communeId);
+          requetePassages.eq('menages.commune_id', communeId);
         } else if (quartierIds) {
           const ids = quartierIds.length ? quartierIds : idsVides;
           requeteMenages.in('quartier_id', ids);
           requeteQuartiers.in('id', ids);
           requeteSignalements.in('quartier_id', ids);
-          requetePassages.in('quartier_id', ids);
+          requetePassages.in('menages.quartier_id', ids);
         }
         const requeteAbonnements = supabase
           .from('abonnements')
@@ -296,14 +302,18 @@ export default function VueDEnsemble() {
           .eq('est_solde', true);
         const requetePaiements = supabase
           .from('paiements')
-          .select('id, montant_gnf, penalite_gnf, statut, created_at')
+          .select(
+            menageIds
+              ? 'id, montant_gnf, penalite_gnf, statut, created_at, abonnements!inner(menage_id)'
+              : 'id, montant_gnf, penalite_gnf, statut, created_at',
+          )
           .gte('created_at', debutMois.toISOString())
           .limit(2000);
         if (menageIds) {
           const ids = menageIds.length ? menageIds : idsVides;
           requeteAbonnements.in('menage_id', ids);
           requeteSoldes.in('menage_id', ids);
-          requetePaiements.in('menage_id', ids);
+          requetePaiements.in('abonnements.menage_id', ids);
         }
 
         const requeteTournees = supabase
