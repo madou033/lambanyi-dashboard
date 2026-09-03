@@ -1,8 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/components/ui';
 import { useTheme } from '@/components/ThemeProvider';
@@ -21,7 +20,10 @@ import {
   useSidebarEpinglee,
 } from '@/components/Sidebar';
 import { PaletteCommandes } from '@/components/PaletteCommandes';
+import { SelecteurTerritoire } from '@/components/SelecteurTerritoire';
 import { ContexteProvider, useContexte } from '@/components/ContexteProvider';
+import { cheminContexte } from '@/lib/contexte';
+import { cheminHorsFacade } from '@/lib/facade-routes';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -80,8 +82,9 @@ export default function DashboardLayout({ children }) {
 
 function DashboardShell({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { theme, basculer } = useTheme();
-  const { ctx, profil, communeLecture } = useContexte();
+  const { ctx, profil } = useContexte();
   const emailSession = null;
   const [enLigne, setEnLigne] = useState(true);
   const [horloge, setHorloge] = useState('--:--:--');
@@ -91,6 +94,16 @@ function DashboardShell({ children }) {
 
   const { epingle, basculer: basculerEpingle } = useSidebarEpinglee();
   useRaccourcisNav(ctx);
+
+  useEffect(
+    function () {
+      if (!ctx || !pathname) return undefined;
+      if (!cheminHorsFacade(pathname, ctx)) return undefined;
+      router.replace(cheminContexte('/dashboard', ctx));
+      return undefined;
+    },
+    [ctx, pathname, router],
+  );
 
   const seDeconnecter = useCallback(
     async function () {
@@ -329,13 +342,7 @@ function DashboardShell({ children }) {
   }
 
   const territoire =
-    ctx.niveau === 'region'
-      ? ctx.lectureCommuneId
-        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
-        : 'Région de Conakry'
-      : ctx.niveau === 'pme'
-        ? profil.pme?.nom ?? 'PME'
-        : profil.communes?.nom ?? 'Commune';
+    ctx.niveau === 'pme' ? profil.pme?.nom ?? 'PME' : profil.communes?.nom ?? 'Commune';
 
   return (
     <div
@@ -357,24 +364,14 @@ function DashboardShell({ children }) {
       />
 
       <header className="lp-topbar flex items-center gap-3.5 border-b border-line px-4">
-        <div className="hidden rounded-full border border-line2 px-3 py-1 font-mono text-[12px] tracking-wide text-green sm:block">
-          {ctx.niveau === 'region' && ctx.lectureCommuneId ? (
-            <Link
-              href="/dashboard"
-              className="cursor-pointer text-txt outline-none focus-visible:ring-2 focus-visible:ring-blue"
-            >
-              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
-              <b className="ml-1.5">{`→ ${communeLecture?.nom ?? ctx.lectureCommuneId}`}</b>
-            </Link>
-          ) : (
-            <>
-              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
-              <b className="ml-1.5 text-txt">
-                {ctx.niveau === 'region' ? 'Région' : territoire}
-              </b>
-            </>
-          )}
-        </div>
+        {ctx.niveau === 'region' ? (
+          <SelecteurTerritoire />
+        ) : (
+          <div className="hidden rounded-full border border-line2 px-3 py-1 font-mono text-[12px] tracking-wide text-green sm:block">
+            <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
+            <b className="ml-1.5 text-txt">{territoire}</b>
+          </div>
+        )}
 
         <button
           type="button"

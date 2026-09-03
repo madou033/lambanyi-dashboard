@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/components/ui';
 import { IconRecherche } from '@/components/icons';
 import { SECTIONS_NAV } from '@/lib/navigation';
-import { lienVisible } from '@/lib/contexte';
+import { cheminContexte, lienVisible } from '@/lib/contexte';
 
 function normaliser(s) {
   return String(s ?? '')
@@ -34,7 +34,7 @@ function itemsNav(ctx) {
         domaine: section.domaine,
         section: section.titre,
         description: section.description,
-        to: lien.to,
+        to: cheminContexte(lien.to, ctx),
         disponible: lien.disponible,
         Icon: section.Icon,
       };
