@@ -166,6 +166,7 @@ export default function PmePage() {
   const [couvertures, setCouvertures] = useState({});
   const [erreurQuartiers, setErreurQuartiers] = useState(null);
   const [quartiersCharges, setQuartiersCharges] = useState(false);
+  const [perimetresCharges, setPerimetresCharges] = useState(false);
   const estAdmin = ctx?.niveau === 'commune' && ctx.droits?.includes('ecrire');
 
   const charger = useCallback(async function () {
@@ -194,6 +195,7 @@ export default function PmePage() {
     ].filter(Boolean);
     setErreurQuartiers(rQuartiers.error ? `Impossible de charger les quartiers : ${rQuartiers.error.message}` : null);
     setQuartiersCharges(!rQuartiers.error);
+    setPerimetresCharges(!rLiens.error);
     if (erreurs.length > 0) {
       setErreur(`Chargement incomplet : ${erreurs.join(' · ')}`);
       if (rPme.error) return;
@@ -299,6 +301,14 @@ export default function PmePage() {
   }
 
   async function ouvrirPerimetre(pme) {
+    if (
+      estAdmin &&
+      pme.commune_creatrice_id !== ctx.communeId &&
+      (!quartiersCharges || !perimetresCharges)
+    ) {
+      setErreur('Impossible d’ouvrir l’adoption : le référentiel des périmètres PME n’a pas été chargé.');
+      return;
+    }
     setMessageForm(null);
     const { data } = await supabase
       .from('pme_quartiers')
@@ -495,6 +505,7 @@ export default function PmePage() {
                     adopter={
                       estAdmin &&
                       quartiersCharges &&
+                      perimetresCharges &&
                       !erreurQuartiers &&
                       p.commune_creatrice_id !== ctx.communeId &&
                       (couvertures[p.id] || 0) < quartiers.length
