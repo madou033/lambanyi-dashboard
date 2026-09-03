@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 import { IconDeconnexion, IconMarque, IconPunaise, IconUtilisateur } from '@/components/icons';
-import { LIENS_DISPONIBLES, SECTIONS_NAV, lienEstActif } from '@/lib/navigation';
-import { lienVisible } from '@/lib/contexte';
+import { liensVisiblesPour, SECTIONS_NAV, lienEstActif } from '@/lib/navigation';
+import { cheminContexte, lienVisible } from '@/lib/contexte';
 
 /**
  * Barre de navigation — cf. DESIGN_SYSTEM.md §3.
@@ -87,10 +87,12 @@ function badgeDeSection(section, badges) {
   );
 }
 
-function indexRaccourci(lien) {
-  const i = LIENS_DISPONIBLES.findIndex(function (l) {
-    return l.to === lien.to;
-  });
+function indexRaccourci(lien, ctx) {
+  const i = liensVisiblesPour(ctx)
+    .slice(0, 9)
+    .findIndex(function (l) {
+      return l.to === lien.to;
+    });
   return i >= 0 ? i + 1 : undefined;
 }
 
@@ -167,12 +169,12 @@ function Rail({ badges, pathname, initiales, ctx }) {
  * Une destination : libellé, puis soit son badge d'alerte, soit son compteur
  * du moment. C'est ce chiffre qui distingue ce panneau d'une liste de liens.
  */
-function SousLien({ lien, badge, compteur, actif }) {
-  const raccourci = indexRaccourci(lien);
+function SousLien({ lien, badge, compteur, actif, ctx }) {
+  const raccourci = indexRaccourci(lien, ctx);
   const alerte = badge && badge.valeur > 0;
   return (
     <Link
-      href={lien.to}
+      href={cheminContexte(lien.to, ctx)}
       aria-current={actif ? 'page' : undefined}
       className={cn(
         'group/lien flex items-center gap-2 rounded-lg py-[7px] pr-2 pl-2.5 text-[12.5px] outline-none transition-colors duration-150',
@@ -280,7 +282,11 @@ function Panneau({
             Lambanyi Propre
           </span>
           <span className="mt-0.5 block truncate text-[9px] tracking-[1.8px] text-nav-muted uppercase">
-            Assainissement · Commune
+            {ctx?.niveau === 'region'
+              ? 'Assainissement · Région'
+              : ctx?.niveau === 'pme'
+                ? 'Assainissement · PME'
+                : 'Assainissement · Commune'}
           </span>
         </span>
 
@@ -329,7 +335,7 @@ function Panneau({
             return (
               <Link
                 key={section.id}
-                href={lienSolo.to}
+                href={cheminContexte(lienSolo.to, ctx)}
                 aria-current={actif ? 'page' : undefined}
                 className={cn(
                   'group/lien flex items-center gap-2.5 rounded-xl px-2 py-1 outline-none transition-colors duration-150',
@@ -416,6 +422,7 @@ function Panneau({
                       badge={badges[lien.to]}
                       compteur={compteurs[lien.to]}
                       actif={lienEstActif(pathname, lien)}
+                      ctx={ctx}
                     />
                   );
                 })}
@@ -653,12 +660,10 @@ export function useRaccourcisNav(ctx) {
       function surTouche(e) {
         if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         const index = Number.parseInt(e.key, 10) - 1;
-        const liens = LIENS_DISPONIBLES.filter(function (lien) {
-          return lien.disponible && lienVisible(lien, ctx);
-        }).slice(0, 9);
+        const liens = liensVisiblesPour(ctx).slice(0, 9);
         if (Number.isNaN(index) || index < 0 || index >= liens.length) return;
         e.preventDefault();
-        router.push(liens[index].to);
+        router.push(cheminContexte(liens[index].to, ctx));
       }
       window.addEventListener('keydown', surTouche);
       return function () {
