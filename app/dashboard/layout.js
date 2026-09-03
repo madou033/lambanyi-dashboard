@@ -298,10 +298,16 @@ function DashboardShell({ children }) {
               href="/dashboard"
               className="cursor-pointer text-txt outline-none focus-visible:ring-2 focus-visible:ring-blue"
             >
-              <b>{territoire}</b>
+              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
+              <b className="ml-1.5">{`→ ${communeLecture?.nom ?? ctx.lectureCommuneId}`}</b>
             </Link>
           ) : (
-            <b className="text-txt">{territoire}</b>
+            <>
+              <span className="text-[10px] tracking-[1.5px] text-muted2 uppercase">Conakry</span>
+              <b className="ml-1.5 text-txt">
+                {ctx.niveau === 'region' ? 'Région' : territoire}
+              </b>
+            </>
           )}
         </div>
 
