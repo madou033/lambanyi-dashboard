@@ -32,7 +32,7 @@ const FILTRES = [
 /* Carte de PME                                                        */
 /* ------------------------------------------------------------------ */
 
-function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adopter }) {
+function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adopter, proprietaire }) {
   return (
     <article
       className={cn(
@@ -109,7 +109,7 @@ function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adop
       </dl>
 
       {editable ? <div className="mt-4 flex gap-2">
-        <Btn
+        {proprietaire || adopter ? <Btn
           variant="ghost"
           className="flex-1 justify-center py-2"
           onClick={function () {
@@ -117,8 +117,8 @@ function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adop
           }}
         >
           {adopter ? 'Adopter' : 'Périmètre'}
-        </Btn>
-        {!adopter ? <Btn
+        </Btn> : null}
+        {proprietaire ? <Btn
           variant="ghost"
           className="py-2"
           onClick={function () {
@@ -127,7 +127,7 @@ function CartePme({ p, rang, onPerimetre, onBasculer, onModifier, editable, adop
         >
           Modifier
         </Btn> : null}
-        {!adopter ? <Btn
+        {proprietaire ? <Btn
           variant="ghost"
           className="py-2"
           onClick={function () {
@@ -163,6 +163,9 @@ export default function PmePage() {
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
   const [editionPme, setEditionPme] = useState(null);
+  const [couvertures, setCouvertures] = useState({});
+  const [erreurQuartiers, setErreurQuartiers] = useState(null);
+  const [quartiersCharges, setQuartiersCharges] = useState(false);
   const estAdmin = ctx?.niveau === 'commune' && ctx.droits?.includes('ecrire');
 
   const charger = useCallback(async function () {
@@ -170,7 +173,7 @@ export default function PmePage() {
     const requeteQuartiers = communeId
       ? supabase.from('quartiers').select('id, nom, code').eq('commune_id', communeId).eq('actif', true).order('nom')
       : supabase.from('quartiers').select('id, nom, code').eq('actif', true).order('nom');
-    const [rPme, rQuartiers, rCollecteurs, rCreateurs] = await Promise.all([
+    const [rPme, rQuartiers, rCollecteurs, rCreateurs, rLiens] = await Promise.all([
       supabase.from('pme_apercu').select('*').order('nom'),
       requeteQuartiers,
       supabase
@@ -179,13 +182,27 @@ export default function PmePage() {
         .eq('role', 'collecteur')
         .order('nom_complet'),
       supabase.from('pme').select('id, commune_creatrice_id'),
+      supabase.from('pme_quartiers').select('pme_id, quartier_id'),
     ]);
     setChargement(false);
+    const erreurs = [
+      rPme.error && `PME (${rPme.error.message})`,
+      rQuartiers.error && `quartiers (${rQuartiers.error.message})`,
+      rCollecteurs.error && `collecteurs (${rCollecteurs.error.message})`,
+      rCreateurs.error && `créateurs (${rCreateurs.error.message})`,
+      rLiens.error && `périmètres (${rLiens.error.message})`,
+    ].filter(Boolean);
+    setErreurQuartiers(rQuartiers.error ? `Impossible de charger les quartiers : ${rQuartiers.error.message}` : null);
+    setQuartiersCharges(!rQuartiers.error);
+    if (erreurs.length > 0) {
+      setErreur(`Chargement incomplet : ${erreurs.join(' · ')}`);
+      if (rPme.error) return;
+    } else {
+      setErreur(null);
+    }
     if (rPme.error) {
-      setErreur(`Impossible de charger les PME : ${rPme.error.message}`);
       return;
     }
-    setErreur(null);
     const createurs = (rCreateurs.data || []).reduce(function (index, p) {
       index[p.id] = p.commune_creatrice_id;
       return index;
@@ -196,6 +213,11 @@ export default function PmePage() {
     setPmes(ctx?.pmeId ? liste.filter((p) => p.id === ctx.pmeId) : liste);
     setQuartiers(rQuartiers.data || []);
     setCollecteurs(rCollecteurs.data || []);
+    const locaux = new Set((rQuartiers.data || []).map((q) => q.id));
+    setCouvertures((rLiens.data || []).reduce(function (index, lien) {
+      if (locaux.has(lien.quartier_id)) index[lien.pme_id] = (index[lien.pme_id] || 0) + 1;
+      return index;
+    }, {}));
   }, [ctx]);
 
   useEffect(
@@ -287,6 +309,9 @@ export default function PmePage() {
       ids: (data || []).map(function (x) {
         return x.quartier_id;
       }),
+      initialIds: (data || []).map(function (x) {
+        return x.quartier_id;
+      }),
     });
   }
 
@@ -306,22 +331,32 @@ export default function PmePage() {
   async function enregistrerPerimetre() {
     setEnregistrement(true);
     setMessageForm(null);
-    // On remplace l'affectation en bloc : plus simple et plus sûr qu'un
-    // diff, la table ne porte que le couple (pme, quartier).
-    const suppr = await supabase.from('pme_quartiers').delete().eq('pme_id', perimetre.pme.id);
-    if (suppr.error) {
+    if (!quartiersCharges || erreurQuartiers) {
       setEnregistrement(false);
-      setMessageForm(`Erreur : ${suppr.error.message}`);
+      setMessageForm('Impossible d’enregistrer : le référentiel local des quartiers n’a pas été chargé.');
       return;
     }
-    if (perimetre.ids.length > 0) {
+    const locaux = new Set(quartiers.map((q) => q.id));
+    const initiauxLocaux = (perimetre.initialIds || []).filter((id) => locaux.has(id));
+    const actuelsLocaux = perimetre.ids.filter((id) => locaux.has(id));
+    const aSupprimer = initiauxLocaux.filter((id) => !actuelsLocaux.includes(id));
+    const aAjouter = actuelsLocaux.filter((id) => !initiauxLocaux.includes(id));
+    if (aSupprimer.length > 0) {
+      const suppr = await supabase.from('pme_quartiers').delete().eq('pme_id', perimetre.pme.id).in('quartier_id', aSupprimer);
+      if (suppr.error) {
+        setEnregistrement(false);
+        setMessageForm(`Erreur : ${suppr.error.message}`);
+        return;
+      }
+    }
+    if (aAjouter.length > 0) {
       const { error } = await supabase.from('pme_quartiers').insert(
-        perimetre.ids.map(function (qid) {
+        aAjouter.map(function (qid) {
           return { pme_id: perimetre.pme.id, quartier_id: qid };
         }),
       );
       if (error) {
-        setEnregistrement(false);
+      setEnregistrement(false);
         setMessageForm(`Erreur : ${error.message}`);
         return;
       }
@@ -457,7 +492,14 @@ export default function PmePage() {
                       setModaleCreation(true);
                     }}
                     editable={estAdmin}
-                    adopter={estAdmin && p.commune_creatrice_id !== ctx.communeId}
+                    adopter={
+                      estAdmin &&
+                      quartiersCharges &&
+                      !erreurQuartiers &&
+                      p.commune_creatrice_id !== ctx.communeId &&
+                      (couvertures[p.id] || 0) < quartiers.length
+                    }
+                    proprietaire={estAdmin && p.commune_creatrice_id === ctx.communeId}
                   />
                 );
               })}
