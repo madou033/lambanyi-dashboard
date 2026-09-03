@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false } }
-  );
-}
+import { exigenceApi, refuserEcritureObservateur } from "@/lib/api-auth";
 
 export async function GET(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb } = auth;
   const type = request.nextUrl.searchParams.get("type_menage");
   let req = sb.from("plans_tarifaires")
     .select("id, code, libelle, montant_gnf, passages_par_semaine, type_menage")
@@ -23,7 +17,11 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb, ctx } = auth;
+  const refus = refuserEcritureObservateur(ctx);
+  if (refus) return refus;
   const body = await request.json();
   const menageId = body.menage_id;
   const planId = body.plan_id;

@@ -1,12 +1,44 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { exigenceApi, refuserEcritureObservateur } from "@/lib/api-auth";
 
-function getAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false } }
-  );
+async function bornerParContexte(sb, req, ctx, p, colonne) {
+  let communeId = ctx.niveau === "commune" ? ctx.communeId : p.get("lectureCommuneId");
+  let quartierReq = sb.from("quartiers").select("id");
+  if (communeId) {
+    quartierReq = quartierReq.eq("commune_id", communeId);
+  } else if (ctx.niveau === "pme") {
+    const liens = await sb.from("pme_quartiers").select("quartier_id").eq("pme_id", ctx.pmeId);
+    if (liens.error) return { error: liens.error };
+    const ids = liens.data.map(function (x) { return x.quartier_id; });
+    return ids.length ? req.in(colonne, ids) : req.in(colonne, ["00000000-0000-0000-0000-000000000000"]);
+  } else if (!communeId) {
+    return req;
+  }
+  const quartiers = await quartierReq;
+  if (quartiers.error) return { error: quartiers.error };
+  const ids = quartiers.data.map(function (x) { return x.id; });
+  return ids.length ? req.in(colonne, ids) : req.in(colonne, ["00000000-0000-0000-0000-000000000000"]);
+}
+
+async function bornerPaiementsDetail(sb, req, ctx, p) {
+  let menages = sb.from("menages").select("code_menage, quartier_id");
+  let communeId = ctx.niveau === "commune" ? ctx.communeId : p.get("lectureCommuneId");
+  if (communeId) {
+    const quartiers = await sb.from("quartiers").select("id").eq("commune_id", communeId);
+    if (quartiers.error) return { error: quartiers.error };
+    menages = menages.in("quartier_id", quartiers.data.map(function (x) { return x.id; }));
+  } else if (ctx.niveau === "pme") {
+    const liens = await sb.from("pme_quartiers").select("quartier_id").eq("pme_id", ctx.pmeId);
+    if (liens.error) return { error: liens.error };
+    menages = menages.in("quartier_id", liens.data.map(function (x) { return x.quartier_id; }));
+  } else if (!communeId) {
+    return req;
+  }
+  const r = await menages;
+  if (r.error) return { error: r.error };
+  return r.data.length
+    ? req.in("code_menage", r.data.map(function (x) { return x.code_menage; }))
+    : req.in("code_menage", ["__aucun__"]);
 }
 
 function appliquerFiltres(req, p) {
@@ -55,7 +87,9 @@ function versCsv(lignes) {
 }
 
 export async function GET(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb, ctx } = auth;
   const p = request.nextUrl.searchParams;
   const mode = p.get("mode") || "recents";
 
@@ -72,7 +106,10 @@ export async function GET(request) {
       "code_menage.ilike.%" + q + "%," +
       "telephone_contact.ilike.%" + q + "%," +
       "point_repere.ilike.%" + q + "%";
-    const r = await sb.from("menages_solde").select("*").or(filtre).limit(15);
+    let req = sb.from("menages_solde").select("*").or(filtre).limit(15);
+    const borne = await bornerParContexte(sb, req, ctx, p, "quartier_id");
+    if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
+    const r = await borne;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     return NextResponse.json({ data: r.data });
   }
@@ -80,6 +117,14 @@ export async function GET(request) {
   if (mode === "solde") {
     const id = p.get("abonnement_id");
     if (!id) return NextResponse.json({ error: "abonnement_id manquant" }, { status: 400 });
+    let acces = sb.from("menages_solde").select("abonnement_id, quartier_id").eq("abonnement_id", id);
+    const borneSolde = await bornerParContexte(sb, acces, ctx, p, "quartier_id");
+    if (borneSolde.error) return NextResponse.json({ error: borneSolde.error.message }, { status: 400 });
+    const accesResultat = await borneSolde;
+    if (accesResultat.error) return NextResponse.json({ error: accesResultat.error.message }, { status: 400 });
+    if (!accesResultat.data.length) {
+      return NextResponse.json({ error: "Abonnement introuvable" }, { status: 404 });
+    }
     const r = await sb.rpc("solde_abonnement", { p_abonnement_id: id });
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     const solde = Array.isArray(r.data) ? r.data[0] : r.data;
@@ -90,6 +135,9 @@ export async function GET(request) {
 
   if (mode === "export") {
     let req = sb.from("paiements_detail").select("*").order("created_at", { ascending: false }).limit(5000);
+    const borne = await bornerPaiementsDetail(sb, req, ctx, p);
+    if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
+    req = borne;
     req = appliquerFiltres(req, p);
     const r = await req;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
@@ -104,6 +152,9 @@ export async function GET(request) {
 
   const limite = parseInt(p.get("limite") || "50", 10);
   let req = sb.from("paiements_detail").select("*").order("created_at", { ascending: false }).limit(limite);
+  const borne = await bornerPaiementsDetail(sb, req, ctx, p);
+  if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
+  req = borne;
   req = appliquerFiltres(req, p);
   const r = await req;
   if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
@@ -120,7 +171,13 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb, ctx } = auth;
+  const refus = refuserEcritureObservateur(ctx);
+  if (refus || ctx.niveau !== "commune") {
+    return refus || NextResponse.json({ erreur: "Lecture seule" }, { status: 403 });
+  }
   const body = await request.json();
 
   const abonnementId = body.abonnement_id;

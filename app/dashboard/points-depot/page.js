@@ -28,6 +28,17 @@ import {
   usePagination,
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
+import { supabase } from '@/lib/supabase';
+
+async function apiHeaders(contentType) {
+  const { data } = await supabase.auth.getSession();
+  const headers = {};
+  if (contentType) headers['Content-Type'] = contentType;
+  if (data.session?.access_token) {
+    headers.Authorization = `Bearer ${data.session.access_token}`;
+  }
+  return headers;
+}
 
 const CartePointsDepot = dynamic(
   function () {
@@ -105,7 +116,7 @@ export default function PointsDepotPage() {
 
   const charger = useCallback(async function () {
     try {
-      const r = await fetch('/api/points-depot');
+      const r = await fetch('/api/points-depot', { headers: await apiHeaders() });
       if (!r.ok) throw new Error();
       const j = await r.json();
       setPoints(j.data || []);
@@ -126,7 +137,9 @@ export default function PointsDepotPage() {
       // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       charger();
-      fetch('/api/points-depot?mode=referentiel')
+      apiHeaders().then(function (headers) {
+        return fetch('/api/points-depot?mode=referentiel', { headers });
+      })
         .then(function (r) {
           return r.ok ? r.json() : { quartiers: [], pme: [] };
         })
@@ -216,7 +229,7 @@ export default function PointsDepotPage() {
     try {
       const r = await fetch('/api/points-depot', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders('application/json'),
         body: JSON.stringify(form),
       });
       const j = await r.json().catch(function () {
@@ -240,7 +253,7 @@ export default function PointsDepotPage() {
     try {
       const r = await fetch('/api/points-depot', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders('application/json'),
         body: JSON.stringify({ id: bascule.id, actif: !bascule.actif }),
       });
       setEnregistrement(false);

@@ -180,7 +180,10 @@ function CollecteursPage() {
       const { data: session } = await supabase.auth.getSession();
       const reponse = await fetch('/api/collecteurs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.session?.access_token || ''}`,
+        },
         body: JSON.stringify({
           email: form.email,
           motDePasse: form.motDePasse,

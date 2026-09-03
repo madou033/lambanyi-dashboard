@@ -31,6 +31,17 @@ import {
 import { IconPlus, IconRecherche } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { supabase } from '@/lib/supabase';
+
+async function apiHeaders(contentType) {
+  const { data } = await supabase.auth.getSession();
+  const headers = {};
+  if (contentType) headers['Content-Type'] = contentType;
+  if (data.session?.access_token) {
+    headers.Authorization = `Bearer ${data.session.access_token}`;
+  }
+  return headers;
+}
 
 const MODES = [
   { code: 'especes', label: 'Espèces' },
@@ -122,7 +133,9 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
     setCherche(true);
     setErreur(null);
     try {
-      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(q)}`);
+      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(q)}`, {
+        headers: await apiHeaders(),
+      });
       if (!r.ok) throw new Error();
       const j = await r.json();
       setResultats(j.data || []);
@@ -156,7 +169,9 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
       return;
     }
     try {
-      const r = await fetch(`/api/paiements?mode=solde&abonnement_id=${m.abonnement_id}`);
+      const r = await fetch(`/api/paiements?mode=solde&abonnement_id=${m.abonnement_id}`, {
+        headers: await apiHeaders(),
+      });
       const j = await r.json();
       setSolde(j.data);
       setAvance(j.avance_mois_max || 0);
@@ -173,7 +188,7 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
     try {
       const r = await fetch('/api/paiements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders('application/json'),
         body: JSON.stringify({
           abonnement_id: choisi.abonnement_id,
           mois,
@@ -501,7 +516,9 @@ function PaiementsPage() {
       p.set('mode', 'recents');
       p.set('limite', '200');
       try {
-        const r = await fetch(`/api/paiements?${p.toString()}`);
+        const r = await fetch(`/api/paiements?${p.toString()}`, {
+          headers: await apiHeaders(),
+        });
         if (!r.ok) throw new Error();
         const j = await r.json();
         setListe(j.data || []);
@@ -530,7 +547,9 @@ function PaiementsPage() {
   );
 
   useEffect(function () {
-    fetch('/api/paiements?mode=quartiers')
+    apiHeaders().then(function (headers) {
+      return fetch('/api/paiements?mode=quartiers', { headers });
+    })
       .then(function (r) {
         return r.ok ? r.json() : { data: [] };
       })

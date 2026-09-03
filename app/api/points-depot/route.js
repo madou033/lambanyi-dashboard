@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false } }
-  );
-}
+import { exigenceApi, refuserEcritureObservateur } from "@/lib/api-auth";
 
 export async function GET(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb } = auth;
   const p = request.nextUrl.searchParams;
 
   if (p.get("mode") === "referentiel") {
@@ -30,7 +24,11 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb, ctx } = auth;
+  const refus = refuserEcritureObservateur(ctx);
+  if (refus) return refus;
   const b = await request.json();
 
   if (!b.nom || !b.type_point) {
@@ -64,7 +62,11 @@ export async function POST(request) {
 }
 
 export async function PATCH(request) {
-  const sb = getAdmin();
+  const auth = await exigenceApi(request);
+  if (auth.erreur) return auth.erreur;
+  const { admin: sb, ctx } = auth;
+  const refus = refuserEcritureObservateur(ctx);
+  if (refus) return refus;
   const b = await request.json();
   if (!b.id) return NextResponse.json({ error: "Identifiant manquant" }, { status: 400 });
 
