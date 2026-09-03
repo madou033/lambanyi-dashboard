@@ -30,7 +30,6 @@ import { MiniBarres } from '@/components/graphes';
 import { IconPlus } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
-import { filtreCommune } from '@/lib/perimetre';
 
 const FORM_VIDE = { nomComplet: '', telephone: '', email: '', motDePasse: '' };
 
@@ -79,10 +78,43 @@ function CollecteursPage() {
   const [bascule, setBascule] = useState(null);
 
   const charger = useCallback(async function () {
-    // `collecteurs_activite` porte déjà les quartiers desservis et le volume
-    // de pointages — inutile de recomposer ça côté client.
+    // `collecteurs_activite` n'a pas de commune_id : un collecteur est ancré
+    // à une PME. On borne via pme_id (périmètre PME, ou PME créatrice /
+    // adoptante de la commune).
     let requete = supabase.from('collecteurs_activite').select('*').order('nom_complet');
-    requete = filtreCommune(requete, ctx);
+    const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
+    const idsVides = ['00000000-0000-0000-0000-000000000000'];
+
+    if (ctx?.niveau === 'pme' && ctx.pmeId) {
+      requete = requete.eq('pme_id', ctx.pmeId);
+    } else if (communeId) {
+      const [creatrices, adoptees] = await Promise.all([
+        supabase.from('pme').select('id').eq('commune_creatrice_id', communeId),
+        supabase
+          .from('pme_quartiers')
+          .select('pme_id, quartiers!inner(commune_id)')
+          .eq('quartiers.commune_id', communeId),
+      ]);
+      if (creatrices.error || adoptees.error) {
+        setChargement(false);
+        setErreur(
+          `Impossible de charger les collecteurs : ${(creatrices.error || adoptees.error).message}`,
+        );
+        return;
+      }
+      const idsPme = [
+        ...new Set([
+          ...(creatrices.data || []).map(function (ligne) {
+            return ligne.id;
+          }),
+          ...(adoptees.data || []).map(function (ligne) {
+            return ligne.pme_id;
+          }),
+        ]),
+      ];
+      requete = requete.in('pme_id', idsPme.length ? idsPme : idsVides);
+    }
+
     const { data, error } = await requete;
     setChargement(false);
     if (error) {
