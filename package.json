@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --experimental-default-type=module --test lib/etat-liste.test.js"
+    "test": "node --experimental-default-type=module --test lib/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
