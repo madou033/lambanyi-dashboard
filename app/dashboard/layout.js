@@ -62,6 +62,7 @@ export default function DashboardLayout({ children }) {
   const { theme, basculer } = useTheme();
 
   const [profil, setProfil] = useState(null);
+  const [emailSession, setEmailSession] = useState(null);
   const [enLigne, setEnLigne] = useState(true);
   const [horloge, setHorloge] = useState('--:--:--');
   const [paletteOuverte, setPaletteOuverte] = useState(false);
@@ -96,6 +97,7 @@ export default function DashboardLayout({ children }) {
           .single();
         if (annule) return;
         setEnLigne(!error);
+        setEmailSession(data.session.user.email ?? null);
         setProfil(p ?? { nom_complet: data.session.user.email, role: null });
       }
       verifier();
@@ -244,9 +246,15 @@ export default function DashboardLayout({ children }) {
     [theme, basculer, router, seDeconnecter],
   );
 
-  const nom = profil?.nom_complet ?? 'Agent';
   const role = profil ? (LIBELLES_ROLE[profil.role] ?? profil.role) : null;
-  const initiales = initialesDe(profil?.nom_complet, 'AG');
+  const nomBrut = String(profil?.nom_complet ?? '').trim();
+  const roleTexte = String(role ?? '').trim();
+  const pseudoEmail = emailSession ? emailSession.split('@')[0] : null;
+  const nom =
+    !nomBrut || (roleTexte && nomBrut.toLowerCase() === roleTexte.toLowerCase())
+      ? pseudoEmail || 'Agent'
+      : nomBrut;
+  const initiales = initialesDe(nom, 'AG');
 
   if (!profil) {
     return (

@@ -276,11 +276,10 @@ export default function SignalementPage() {
         titre={chargement ? 'Chargement…' : typeLibelle}
         hrefRetour="/dashboard/signalements"
         badges={
-          chargement || !signalement ? null : (
-            <>
-              <BadgeStatut statut={signalement.statut} />
-              {retard ? <Badge ton="or">En retard</Badge> : null}
-            </>
+          chargement || !signalement ? null : retard ? (
+            <Badge ton="or">En retard</Badge>
+          ) : (
+            <BadgeStatut statut={signalement.statut} />
           )
         }
         meta={{

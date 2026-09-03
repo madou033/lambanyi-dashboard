@@ -157,8 +157,11 @@ function LigneSignalement({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <BadgeStatut statut={s.statut} />
-          {s.en_retard ? <Badge ton="or">En retard</Badge> : null}
+          {s.en_retard ? (
+            <Badge ton="or">En retard</Badge>
+          ) : (
+            <BadgeStatut statut={s.statut} />
+          )}
           {s.quartier_nom ? (
             <span className="font-mono text-[11px] tracking-wide text-green">{s.quartier_nom}</span>
           ) : (
@@ -566,8 +569,8 @@ export default function SignalementsPage() {
         })}
       </div>
 
-      {/* Toolbar */}
-      <div className="lp-rise mt-6 flex flex-wrap items-center gap-2" style={{ animationDelay: '60ms' }}>
+      {/* Toolbar — chips puis outils, deux rangées stables */}
+      <div className="lp-rise mt-6 flex flex-col gap-2.5" style={{ animationDelay: '60ms' }}>
         <div className="flex flex-wrap gap-1.5">
           {STATUTS.map(function (s) {
             const n = s.code === 'tous' ? signalements.length : compte(s.code);
@@ -585,45 +588,50 @@ export default function SignalementsPage() {
             );
           })}
         </div>
-        <div className="flex-1" />
-        <Recherche valeur={recherche} onChange={setRecherche} placeholder="Description, quartier…" />
-        <SelectFiltre valeur={filtreType} onChange={setFiltreType} ariaLabel="Filtrer par type">
-          <option value="">Tous les types</option>
-          {TYPES_SIGNALEMENT.map(function (t) {
-            return (
-              <option key={t.code} value={t.code}>
-                {t.label}
-              </option>
-            );
-          })}
-        </SelectFiltre>
-        <SelectFiltre
-          valeur={filtreQuartier}
-          onChange={setFiltreQuartier}
-          ariaLabel="Filtrer par quartier"
-        >
-          <option value="">Tous les quartiers</option>
-          {quartiers.map(function (q) {
-            return (
-              <option key={q} value={q}>
-                {q}
-              </option>
-            );
-          })}
-        </SelectFiltre>
-        <SelectFiltre
-          valeur={filtrePeriode}
-          onChange={setFiltrePeriode}
-          ariaLabel="Filtrer par période"
-        >
-          {PERIODES.map(function (p) {
-            return (
-              <option key={p.code} value={p.code}>
-                {p.label}
-              </option>
-            );
-          })}
-        </SelectFiltre>
+        <div className="flex flex-wrap items-center gap-2">
+          <Recherche
+            valeur={recherche}
+            onChange={setRecherche}
+            placeholder="Description, quartier…"
+          />
+          <SelectFiltre valeur={filtreType} onChange={setFiltreType} ariaLabel="Filtrer par type">
+            <option value="">Tous les types</option>
+            {TYPES_SIGNALEMENT.map(function (t) {
+              return (
+                <option key={t.code} value={t.code}>
+                  {t.label}
+                </option>
+              );
+            })}
+          </SelectFiltre>
+          <SelectFiltre
+            valeur={filtreQuartier}
+            onChange={setFiltreQuartier}
+            ariaLabel="Filtrer par quartier"
+          >
+            <option value="">Tous les quartiers</option>
+            {quartiers.map(function (q) {
+              return (
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              );
+            })}
+          </SelectFiltre>
+          <SelectFiltre
+            valeur={filtrePeriode}
+            onChange={setFiltrePeriode}
+            ariaLabel="Filtrer par période"
+          >
+            {PERIODES.map(function (p) {
+              return (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              );
+            })}
+          </SelectFiltre>
+        </div>
       </div>
 
       {/* File + carte */}

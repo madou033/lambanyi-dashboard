@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import {
+  Badge,
   BandeauErreur,
   Bloc,
   Compteur,
@@ -19,6 +20,7 @@ import {
 import { BarreEmpilee, BarresActivite, BarresReparties, Donut, Jauge } from '@/components/graphes';
 import { ICONES_ACTION, SECTIONS_NAV } from '@/lib/navigation';
 import { IconAlerte, IconCamion } from '@/components/icons';
+import { estEnRetard } from '@/lib/signalements';
 
 /* ------------------------------------------------------------------ */
 /* Agrégations temporelles                                             */
@@ -341,6 +343,13 @@ export default function VueDEnsemble() {
     return valeurs.slice(-12);
   };
 
+  const passages24h = passagesParHeure.reduce(function (s, n) {
+    return s + n;
+  }, 0);
+  const signalements24h = signalementsParHeure.reduce(function (s, n) {
+    return s + n;
+  }, 0);
+
   const parType = TYPES_SIGNALEMENT.map(function (t) {
     return {
       label: t.label,
@@ -409,9 +418,9 @@ export default function VueDEnsemble() {
         <ActionsRapides />
       </div>
 
-      {/* Pouls */}
+      {/* Pouls — cartes séparées (identité Pharmly) */}
       <div
-        className="lp-rise mt-2 mb-9 grid grid-cols-2 gap-y-6 border-y border-line py-5 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x lg:divide-line"
+        className="lp-rise mt-5 mb-9 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
         style={{ animationDelay: '90ms' }}
       >
         <Compteur
@@ -462,13 +471,13 @@ export default function VueDEnsemble() {
             delai={120}
             extra={
               <span className="font-mono text-[10px] text-muted2 tabular-nums">
-                {passages.length} passages · {signalements.length} signalements
+                {passages24h} passages · {signalements24h} signalements (24 h)
               </span>
             }
           >
             <BarresActivite
               etiquettes={heures24}
-              uniteVide="Aucune collecte ni signalement sur la période"
+              uniteVide="Aucun passage ni signalement dans les 24 dernières heures"
               series={[
                 { label: 'Passages', couleur: 'var(--lp-teal)', valeurs: passagesParHeure },
                 { label: 'Signalements', couleur: 'var(--lp-red)', valeurs: signalementsParHeure },
@@ -519,6 +528,7 @@ export default function VueDEnsemble() {
             ) : (
               <div className="flex flex-col">
                 {journal.map(function (s, rang) {
+                  const retard = estEnRetard(s);
                   return (
                     <Link
                       key={s.id}
@@ -533,11 +543,19 @@ export default function VueDEnsemble() {
                       <span
                         aria-hidden
                         className="w-[3px] shrink-0 self-stretch rounded-full"
-                        style={{ background: couleurTon(tonStatut(s.statut)) }}
+                        style={{
+                          background: retard
+                            ? 'var(--lp-gold)'
+                            : couleurTon(tonStatut(s.statut)),
+                        }}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <BadgeStatut statut={s.statut} />
+                          {retard ? (
+                            <Badge ton="or">En retard</Badge>
+                          ) : (
+                            <BadgeStatut statut={s.statut} />
+                          )}
                           {s.quartiers?.nom ? (
                             <span className="font-mono text-[11px] tracking-wide text-green">
                               {s.quartiers.nom}

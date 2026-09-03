@@ -383,7 +383,9 @@ function CollecteursPage() {
                     </span>
                   </span>
                 </Td>
-                <Td mono>{c.telephone || '—'}</Td>
+                <Td mono className="whitespace-nowrap">
+                  {c.telephone || '—'}
+                </Td>
                 <Td className="max-w-[220px] truncate" title={c.quartier || undefined}>
                   {c.quartier || <span className="text-muted2">Aucune tournée affectée</span>}
                 </Td>

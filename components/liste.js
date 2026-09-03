@@ -5,7 +5,7 @@
  * Toolbar, chips, tableau dense, pagination, export CSV.
  */
 
-import { useMemo, useState } from 'react';
+import { Children, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 import { IconChevronBas, IconRecherche } from '@/components/icons';
@@ -92,6 +92,9 @@ export function SelectFiltre({ valeur, onChange, ariaLabel, className, children 
  * @param colonnes [{ cle, label, align?: 'right'|'center', className?, noPrint? }]
  */
 export function Tableau({ colonnes, children, vide }) {
+  const lignes = Children.toArray(children).filter(Boolean);
+  const afficherVide = Boolean(vide) && lignes.length === 0;
+
   return (
     <div>
       <table className="w-full border-collapse">
@@ -120,8 +123,8 @@ export function Tableau({ colonnes, children, vide }) {
           </tr>
         </thead>
         <tbody>
-          {children}
-          {vide ? (
+          {lignes}
+          {afficherVide ? (
             <tr>
               <td colSpan={colonnes.length} className="px-5 py-10 text-center text-[13px] text-muted2">
                 {vide}

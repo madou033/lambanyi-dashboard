@@ -467,7 +467,9 @@ function MenagesPage() {
                   >
                     {m.point_repere || '—'}
                   </Td>
-                  <Td mono>{m.telephone_contact || '—'}</Td>
+                  <Td mono className="whitespace-nowrap">
+                    {m.telephone_contact || '—'}
+                  </Td>
                   <Td>{libelleType(m.type_menage)}</Td>
                   <Td mono>{m.plan_code || '—'}</Td>
                   <Td mono>{dateCourte(m.date_fin)}</Td>
