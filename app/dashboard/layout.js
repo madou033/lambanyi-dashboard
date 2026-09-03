@@ -147,12 +147,38 @@ function DashboardShell({ children }) {
             .from('paiements')
             .select('id', { count: 'exact', head: true })
             .in('statut', ['initie', 'en_attente']);
-      const requeteCollecteurs = supabase
+      let requeteCollecteurs = supabase
         .from('profils')
         .select('id', { count: 'exact', head: true })
         .eq('role', 'collecteur')
         .eq('actif', true);
-      if (communeId) requeteCollecteurs.eq('commune_id', communeId);
+      // Un collecteur n'a pas de commune_id (ancré à une PME). Pour une
+      // commune, on compte ceux des PME créatrices ou adoptantes.
+      if (communeId) {
+        const [creatrices, adoptees] = await Promise.all([
+          supabase.from('pme').select('id').eq('commune_creatrice_id', communeId),
+          supabase
+            .from('pme_quartiers')
+            .select('pme_id, quartiers!inner(commune_id)')
+            .eq('quartiers.commune_id', communeId),
+        ]);
+        const idsPme = [
+          ...new Set([
+            ...(creatrices.data || []).map(function (ligne) {
+              return ligne.id;
+            }),
+            ...(adoptees.data || []).map(function (ligne) {
+              return ligne.pme_id;
+            }),
+          ]),
+        ];
+        requeteCollecteurs = requeteCollecteurs.in(
+          'pme_id',
+          idsPme.length ? idsPme : ['00000000-0000-0000-0000-000000000000'],
+        );
+      } else if (ctx?.niveau === 'pme' && ctx.pmeId) {
+        requeteCollecteurs = requeteCollecteurs.eq('pme_id', ctx.pmeId);
+      }
       const requeteTournees = communeId
         ? supabase
             .from('tournees')
