@@ -117,7 +117,7 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
 }
 
 /* Sombre — thème par défaut. Surfaces ardoise froide (zéro teinte verte) ;
-   la barre nav reste la seule zone forêt. */
+   barre nav forêt adoucie ; accent vert sauge (pas fluo). */
 :root,
 [data-theme="dark"] {
   --lp-bg: #111314;
@@ -126,11 +126,11 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   --lp-panel2: #22252a;
   --lp-line: #2e3238;
   --lp-line2: #42484f;
-  --lp-txt: #eceef0;
-  --lp-muted: #a4a8ad;
-  --lp-muted2: #8b9096;
-  --lp-green: #3ddb9a;
-  --lp-greend: #2bb87c;
+  --lp-txt: #f1f2f3;
+  --lp-muted: #b4b8bd;
+  --lp-muted2: #9aa0a6;
+  --lp-green: #83af99;
+  --lp-greend: #507c66;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
   --lp-blue: #7bbbe4;
@@ -138,11 +138,11 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
-  --lp-nav: #0b3d2e;
-  --lp-nav2: #0f4c3a;
-  --lp-nav-line: #1a5c47;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
   --lp-nav-txt: #eaf5ef;
-  --lp-nav-muted: #8fbea8;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: dark;
 }
 
@@ -157,9 +157,9 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   --lp-line2: #8f9b94;
   --lp-txt: #0a100e;
   --lp-muted: #24302b;
-  --lp-muted2: #3a4640;
-  --lp-green: #0b6b42;
-  --lp-greend: #085032;
+  --lp-muted2: #334039;
+  --lp-green: #376249;
+  --lp-greend: #254131;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -167,11 +167,11 @@ sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
-  --lp-nav: #0b3d2e;
-  --lp-nav2: #0f4c3a;
-  --lp-nav-line: #1a5c47;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
   --lp-nav-txt: #eaf5ef;
-  --lp-nav-muted: #8fbea8;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: light;
 }
 ```
@@ -182,13 +182,13 @@ le thème du contenu.
 
 | Token | Classe | Rôle | Hex (fixe) |
 |---|---|---|---|
-| `nav` | `bg-nav` | Fond sidebar / rail | `#0b3d2e` |
-| `nav2` | `bg-nav2` | Panneau actif / survol dans la nav | `#0f4c3a` |
-| `nav-line` | `border-nav-line` | Filets dans la nav | `#1a5c47` |
+| `nav` | `bg-nav` | Fond sidebar / rail | `#1c352e` |
+| `nav2` | `bg-nav2` | Panneau actif / survol dans la nav | `#25423a` |
+| `nav-line` | `border-nav-line` | Filets dans la nav | `#3c5349` |
 | `nav-txt` | `text-nav-txt` | Texte principal nav | `#eaf5ef` |
-| `nav-muted` | `text-nav-muted` | Texte secondaire nav | `#8fbea8` |
+| `nav-muted` | `text-nav-muted` | Texte secondaire nav | `#9bb5aa` |
 
-Item actif de la nav : aplat `green` + `text-encre` (pastille lime sur forêt).
+Item actif de la nav : aplat `green` + `text-encre` (pastille sauge sur forêt).
 
 ### 2.2 Sémantique — un token, un sens
 
@@ -216,8 +216,8 @@ Conséquence, les deux thèmes inversent la logique :
 
 | | Accents | Encre sur aplat (`--lp-encre`) |
 |---|---|---|
-| **Sombre** | clairs (`#3ddb9a`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
-| **Clair** | foncés (`#0b6b42`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
+| **Sombre** | clairs (`#83af99`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
+| **Clair** | foncés (`#376249`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
 
 D'où la règle : **tout texte posé sur un aplat d'accent utilise `text-encre`**, jamais une couleur
 en dur. `bg-green text-encre` est correct dans les deux thèmes ; `bg-green text-[#04231a]` devient
@@ -227,9 +227,9 @@ Un pictogramme placé sur un aplat (le logo) se dessine en `currentColor` et son
 `text-encre` — il suit ainsi le thème sans duplication.
 
 **Les gris ne sont pas verts — aussi en sombre.** En clair, `muted` et `muted2`
-sont des ardoises foncées (`#24302b`, `#3a4640`), pas des verts pâles : le
+sont des ardoises foncées (`#24302b`, `#334039`), pas des verts pâles : le
 texte secondaire doit rester lisible sur blanc. En sombre, ce sont des gris
-neutres (`#a4a8ad`, `#8b9096`) sur des surfaces ardoise froide (`#111314`,
+neutres (`#b4b8bd`, `#9aa0a6`) sur des surfaces ardoise froide (`#111314`,
 `#1a1c1f`), sans teinte verte. Une palette entièrement teintée délave
 l'écran ; trop de vert en sombre et trop de pâleur en clair rendent le
 contenu illisible.

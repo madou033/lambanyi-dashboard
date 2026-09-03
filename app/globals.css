@@ -34,7 +34,7 @@
 }
 
 /* Sombre — thème par défaut. Surfaces ardoise froide (zéro teinte verte) ;
-   la barre nav reste la seule zone forêt. */
+   barre nav forêt adoucie ; accent vert sauge (pas fluo). */
 :root,
 [data-theme="dark"] {
   --lp-bg: #111314;
@@ -43,11 +43,11 @@
   --lp-panel2: #22252a;
   --lp-line: #2e3238;
   --lp-line2: #42484f;
-  --lp-txt: #eceef0;
-  --lp-muted: #a4a8ad;
-  --lp-muted2: #8b9096;
-  --lp-green: #3ddb9a;
-  --lp-greend: #2bb87c;
+  --lp-txt: #f1f2f3;
+  --lp-muted: #b4b8bd;
+  --lp-muted2: #9aa0a6;
+  --lp-green: #83af99;
+  --lp-greend: #507c66;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
   --lp-blue: #7bbbe4;
@@ -55,11 +55,11 @@
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
-  --lp-nav: #0b3d2e;
-  --lp-nav2: #0f4c3a;
-  --lp-nav-line: #1a5c47;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
   --lp-nav-txt: #eaf5ef;
-  --lp-nav-muted: #8fbea8;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: dark;
 }
 
@@ -74,9 +74,9 @@
   --lp-line2: #8f9b94;
   --lp-txt: #0a100e;
   --lp-muted: #24302b;
-  --lp-muted2: #3a4640;
-  --lp-green: #0b6b42;
-  --lp-greend: #085032;
+  --lp-muted2: #334039;
+  --lp-green: #376249;
+  --lp-greend: #254131;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -84,11 +84,11 @@
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
-  --lp-nav: #0b3d2e;
-  --lp-nav2: #0f4c3a;
-  --lp-nav-line: #1a5c47;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
   --lp-nav-txt: #eaf5ef;
-  --lp-nav-muted: #8fbea8;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: light;
 }
 
