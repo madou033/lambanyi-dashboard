@@ -112,14 +112,36 @@ export default function MenagePage() {
         supabase
           .from('menages')
           .select(
-            'id, code_menage, point_repere, telephone_contact, type_menage, nb_personnes, statut, created_at, proprietaire_id, profils(nom_complet), quartiers(nom)',
+            'id, code_menage, point_repere, telephone_contact, type_menage, nb_personnes, statut, created_at, proprietaire_id, quartier_id, profils(nom_complet), quartiers(nom, commune_id)',
           )
           .eq('id', id)
           .maybeSingle(),
       ]);
 
       const soldeCharge = soldeReponse.data || null;
-      const foyerCharge = foyerReponse.data || null;
+      const foyerBrut = foyerReponse.data || null;
+      const communeId = ctx?.lectureCommuneId || ctx?.communeId;
+      const foyerQuartier = relation(foyerBrut?.quartiers);
+      const pmeQuartier = ctx?.pmeId && foyerBrut
+        ? await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId).eq('quartier_id', foyerBrut.quartier_id).maybeSingle()
+        : null;
+      const foyerDansPerimetre =
+        !foyerBrut ||
+        (communeId && foyerQuartier?.commune_id === communeId) ||
+        (ctx?.pmeId && Boolean(pmeQuartier?.data)) ||
+        (!communeId && !ctx?.pmeId);
+      const foyerCharge = foyerDansPerimetre ? foyerBrut : null;
+      if (foyerBrut && !foyerDansPerimetre) {
+        setSolde(null);
+        setFoyer(null);
+        setAbonnements([]);
+        setPaiements([]);
+        setPassages([]);
+        setInstant(maintenant);
+        setChargement(false);
+        setErreur(null);
+        return;
+      }
       const code = foyerCharge?.code_menage || soldeCharge?.code_menage;
 
       if (!soldeCharge && !foyerCharge) {

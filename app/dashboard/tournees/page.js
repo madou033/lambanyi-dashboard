@@ -149,12 +149,26 @@ export default function TourneesPage() {
             .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
             .order('jour_semaine')
             .order('heure_debut'),
-      supabase
-        .from('profils')
-        .select('id, nom_complet')
-        .eq('role', 'collecteur')
-        .eq('actif', true)
-        .order('nom_complet'),
+      ctx?.niveau === 'pme'
+        ? supabase
+            .from('profils')
+            .select('id, nom_complet')
+            .eq('role', 'collecteur')
+            .eq('actif', true)
+            .eq('pme_id', ctx.pmeId)
+            .order('nom_complet')
+        : supabase
+            .from('profils')
+            .select('id, nom_complet')
+            .eq('role', 'collecteur')
+            .eq('actif', true)
+            .in(
+              'pme_id',
+              (await supabase.from('pme_quartiers').select('pme_id').in('quartier_id', idsQuartiers)).data?.map(function (x) {
+                return x.pme_id;
+              }) || ['00000000-0000-0000-0000-000000000000'],
+            )
+            .order('nom_complet'),
     ]);
     setChargement(false);
     if (t.error) {
@@ -310,15 +324,15 @@ export default function TourneesPage() {
         sousTitre="Le passage de chaque quartier, jour par jour. Une tournée sans collecteur affecté ne partira pas."
         actions={
           <>
-            {peutEcrire(ctx) ? <Btn
+            <Btn
               variant="ghost"
               onClick={function () {
                 window.print();
               }}
             >
               Imprimer
-            </Btn> : null}
-            <Btn
+            </Btn>
+            {peutEcrire(ctx) ? <Btn
               variant="green"
               onClick={function () {
                 ouvrirCreation(null);
@@ -326,7 +340,7 @@ export default function TourneesPage() {
             >
               <IconPlus className="size-4" />
               Planifier une tournée
-            </Btn>
+            </Btn> : null}
           </>
         }
       />

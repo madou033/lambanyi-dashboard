@@ -274,6 +274,7 @@ export default function SignalementsPage() {
   const [cloture, setCloture] = useState(null);
   const [affectationCible, setAffectationCible] = useState(null);
   const [selectionId, setSelectionId] = useState(null);
+  const [centre, setCentre] = useState([9.509, -13.712]);
   const [instant, setInstant] = useState(0);
 
   const [filtreStatut, setFiltreStatut] = useState('tous');
@@ -283,13 +284,27 @@ export default function SignalementsPage() {
   const [recherche, setRecherche] = useState('');
 
   const charger = useCallback(async function () {
+    const communeId = ctx?.lectureCommuneId || ctx?.communeId;
+    const quartiersReponse = communeId
+      ? await supabase.from('quartiers').select('id, latitude, longitude').eq('commune_id', communeId).order('nom')
+      : ctx?.pmeId
+        ? await supabase.from('pme_quartiers').select('quartiers!inner(id, latitude, longitude)').eq('pme_id', ctx.pmeId)
+        : { data: [], error: null };
+    const quartiersAutorises = ctx?.pmeId
+      ? (quartiersReponse.data || []).map(function (x) { return x.quartiers; })
+      : quartiersReponse.data || [];
+    const idsQuartiers = quartiersAutorises.map(function (q) { return q.id; });
+    const premierQuartier = quartiersAutorises.find(function (q) { return q.latitude != null && q.longitude != null; });
+    if (premierQuartier) setCentre([Number(premierQuartier.latitude), Number(premierQuartier.longitude)]);
     let pilotageRequete = supabase
       .from('signalements_pilotage')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(500);
-    if (ctx?.lectureCommuneId || ctx?.communeId) {
-      pilotageRequete = pilotageRequete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+    if (communeId) {
+      pilotageRequete = pilotageRequete.eq('commune_id', communeId);
+    } else if (ctx?.pmeId) {
+      pilotageRequete = pilotageRequete.in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000']);
     }
     const pilotage = await pilotageRequete;
     const instantChargement = Date.now();
@@ -310,13 +325,16 @@ export default function SignalementsPage() {
     // Compatibilité temporaire tant que la migration créant la vue n'est pas
     // appliquée : table et jointures d'affectation, plus coordonnées de la vue carte.
     let [base, localises] = await Promise.all([
-      supabase
+      (ctx?.pmeId && !idsQuartiers.length
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
         .from('signalements')
         .select(
           'id, type_signalement, description, statut, created_at, photo_url, quartier_id, assigne_pme_id, assigne_collecteur_id, quartiers(nom), assigne_pme:pme!signalements_assigne_pme_id_fkey(nom), assigne_collecteur:profils!signalements_assigne_collecteur_id_fkey(nom_complet)',
         )
         .order('created_at', { ascending: false })
-        .limit(500),
+        .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
+        .limit(500)),
       supabase.from('signalements_carte').select('id, latitude, longitude'),
     ]);
 
@@ -328,6 +346,7 @@ export default function SignalementsPage() {
         .select(
           'id, type_signalement, description, statut, created_at, photo_url, quartier_id, quartiers(nom)',
         )
+        .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
         .order('created_at', { ascending: false })
         .limit(500);
     }
@@ -708,6 +727,7 @@ export default function SignalementsPage() {
                 signalements={filtres}
                 selectionId={selectionId}
                 onSelection={setSelectionId}
+                centre={centre}
               />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">

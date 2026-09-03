@@ -217,6 +217,10 @@ export default function TarifsPage() {
   });
 
   async function enregistrerMontant(plan, brut) {
+    if (!ctx?.communeId || plan.commune_id !== ctx.communeId) {
+      setErreur('Cette formule tarifaire est hors du périmètre de la commune.');
+      return;
+    }
     const valeur = parseInt(brut, 10);
     if (!valeur || valeur <= 0) {
       setErreur('Le montant doit être un entier positif.');
@@ -227,7 +231,8 @@ export default function TarifsPage() {
     const { error } = await supabase
       .from('plans_tarifaires')
       .update({ montant_gnf: valeur })
-      .eq('id', plan.id);
+      .eq('id', plan.id)
+      .eq('commune_id', ctx.communeId);
     setOccupe(false);
     if (error) {
       setErreur(`Mise à jour refusée : ${error.message}`);
@@ -239,11 +244,16 @@ export default function TarifsPage() {
   }
 
   async function basculerActif(plan) {
+    if (!ctx?.communeId || plan.commune_id !== ctx.communeId) {
+      setErreur('Cette formule tarifaire est hors du périmètre de la commune.');
+      return;
+    }
     setOccupe(true);
     const { error } = await supabase
       .from('plans_tarifaires')
       .update({ actif: !plan.actif })
-      .eq('id', plan.id);
+      .eq('id', plan.id)
+      .eq('commune_id', ctx.communeId);
     setOccupe(false);
     if (error) {
       setErreur(`Mise à jour refusée : ${error.message}`);

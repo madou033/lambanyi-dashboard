@@ -32,6 +32,7 @@ import { IconPlus, IconRecherche } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { supabase } from '@/lib/supabase';
+import { filtreCommune } from '@/lib/perimetre';
 
 async function apiHeaders(contentType) {
   const { data } = await supabase.auth.getSession();
@@ -516,12 +517,26 @@ function PaiementsPage() {
       p.set('mode', 'recents');
       p.set('limite', '200');
       try {
+        let perimetre = filtreCommune(supabase.from('quartiers').select('id, nom'), ctx);
+        if (ctx?.pmeId) {
+          const liens = await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId);
+          perimetre = supabase.from('quartiers').select('id, nom').in(
+            'id',
+            liens.data?.map(function (x) { return x.quartier_id; }) || ['00000000-0000-0000-0000-000000000000'],
+          );
+        }
+        const quartiersPerimetre = await perimetre;
+        const nomsQuartiers = new Set((quartiersPerimetre.data || []).map(function (q) { return q.nom; }));
         const r = await fetch(`/api/paiements?${p.toString()}`, {
           headers: await apiHeaders(),
         });
         if (!r.ok) throw new Error();
         const j = await r.json();
-        setListe(j.data || []);
+        setListe(
+          ctx?.pmeId
+            ? (j.data || []).filter(function (paiement) { return nomsQuartiers.has(paiement.quartier); })
+            : j.data || [],
+        );
         setTotaux({ montant: j.total || 0, penalite: j.total_penalite || 0 });
         setErreur(null);
       } catch {
@@ -531,7 +546,7 @@ function PaiementsPage() {
       }
       setChargement(false);
     },
-    [parametres],
+    [parametres, ctx],
   );
 
   useEffect(
