@@ -146,7 +146,7 @@ export default function MenagePage() {
             (!communeId && !ctx?.pmeId),
         );
       const foyerCharge = foyerDansPerimetre ? foyerBrut : null;
-      if (foyerBrut && !foyerDansPerimetre) {
+      if (!foyerBrut || !foyerDansPerimetre) {
         setSolde(null);
         setFoyer(null);
         setAbonnements([]);
