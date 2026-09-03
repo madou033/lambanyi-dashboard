@@ -16,6 +16,8 @@ import {
 } from '@/components/ui';
 import { BandeauMetriques } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 /** Numérotation ISO 8601 : 1 = lundi … 7 = dimanche. */
 const JOURS = [
@@ -110,6 +112,7 @@ function CarteTournee({ t, rang, onOuvrir }) {
 /* ------------------------------------------------------------------ */
 
 export default function TourneesPage() {
+  const { ctx } = useContexte();
   const [tournees, setTournees] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [collecteurs, setCollecteurs] = useState([]);
@@ -127,13 +130,25 @@ export default function TourneesPage() {
   const [messageForm, setMessageForm] = useState(null);
 
   const charger = useCallback(async function () {
-    const [t, q, c] = await Promise.all([
-      supabase
-        .from('tournees')
-        .select('id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom), profils(nom_complet)')
-        .order('jour_semaine')
-        .order('heure_debut'),
-      supabase.from('quartiers').select('id, nom').order('nom'),
+    const q = ctx?.communeId || ctx?.lectureCommuneId
+      ? supabase.from('quartiers').select('id, nom').eq('commune_id', ctx.lectureCommuneId || ctx.communeId).order('nom')
+      : ctx?.pmeId
+        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom)').eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom').order('nom');
+    const qResult = await q;
+    const quartiersAutorises = ctx?.pmeId
+      ? (qResult.data || []).map(function (x) { return x.quartiers; })
+      : qResult.data || [];
+    const idsQuartiers = quartiersAutorises.map(function (x) { return x.id; });
+    const [t, c] = await Promise.all([
+      idsQuartiers.length === 0 && ctx?.pmeId
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from('tournees')
+            .select('id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom), profils(nom_complet)')
+            .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
+            .order('jour_semaine')
+            .order('heure_debut'),
       supabase
         .from('profils')
         .select('id, nom_complet')
@@ -148,9 +163,9 @@ export default function TourneesPage() {
     }
     setErreur(null);
     setTournees(t.data || []);
-    setQuartiers(q.data || []);
+    setQuartiers(quartiersAutorises);
     setCollecteurs(c.data || []);
-  }, []);
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -295,14 +310,14 @@ export default function TourneesPage() {
         sousTitre="Le passage de chaque quartier, jour par jour. Une tournée sans collecteur affecté ne partira pas."
         actions={
           <>
-            <Btn
+            {peutEcrire(ctx) ? <Btn
               variant="ghost"
               onClick={function () {
                 window.print();
               }}
             >
               Imprimer
-            </Btn>
+            </Btn> : null}
             <Btn
               variant="green"
               onClick={function () {
@@ -429,7 +444,7 @@ export default function TourneesPage() {
                 )}
               </div>
 
-              <button
+              {peutEcrire(ctx) ? <button
                 type="button"
                 onClick={function () {
                   ouvrirCreation(j.valeur);
@@ -438,14 +453,14 @@ export default function TourneesPage() {
               >
                 <IconPlus className="size-3" />
                 Ajouter
-              </button>
+              </button> : null}
             </section>
           );
         })}
       </div>
 
       {/* Création */}
-      <Modal
+      {peutEcrire(ctx) ? <Modal
         ouvert={modaleCreation}
         onFermer={function () {
           setModaleCreation(false);
@@ -559,10 +574,10 @@ export default function TourneesPage() {
             </span>
           </label>
         </div>
-      </Modal>
+      </Modal> : null}
 
       {/* Détail */}
-      <Modal
+      {peutEcrire(ctx) ? <Modal
         ouvert={Boolean(cible)}
         onFermer={function () {
           setCible(null);
@@ -626,7 +641,7 @@ export default function TourneesPage() {
             })}
           </Selecteur>
         </label>
-      </Modal>
+      </Modal> : null}
     </div>
   );
 }

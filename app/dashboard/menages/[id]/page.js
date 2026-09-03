@@ -26,6 +26,8 @@ import {
   tonStatut,
 } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const TYPES_MENAGE = {
   residentiel: 'Résidentiel',
@@ -75,6 +77,7 @@ function dansPeriode(iso, periode, instant) {
 
 export default function MenagePage() {
   const { id } = useParams();
+  const { ctx } = useContexte();
   const [solde, setSolde] = useState(null);
   const [foyer, setFoyer] = useState(null);
   const [abonnements, setAbonnements] = useState([]);
@@ -99,7 +102,13 @@ export default function MenagePage() {
       const maintenant = Date.now();
       const il30j = new Date(maintenant - 30 * 86_400_000).toISOString();
       const [soldeReponse, foyerReponse] = await Promise.all([
-        supabase.from('menages_solde').select('*').eq('menage_id', id).maybeSingle(),
+        (function () {
+          let requete = supabase.from('menages_solde').select('*').eq('menage_id', id);
+          if (ctx?.lectureCommuneId || ctx?.communeId) {
+            requete = requete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+          }
+          return requete.maybeSingle();
+        })(),
         supabase
           .from('menages')
           .select(
@@ -204,7 +213,7 @@ export default function MenagePage() {
       );
       if (code) document.title = `Ménage · ${code}`;
     },
-    [id],
+    [id, ctx],
   );
 
   useEffect(
@@ -346,27 +355,27 @@ export default function MenagePage() {
         actions={
           chargement ? null : (
             <>
-              {solde?.abonnement_id ? (
+              {solde?.abonnement_id && ctx?.niveau === 'commune' ? (
                 <Link
                   href={`/dashboard/paiements?q=${encodeURIComponent(code)}`}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-green px-3.5 py-2.5 text-[13px] font-semibold text-encre outline-none transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue"
                 >
                   Encaisser
                 </Link>
-              ) : (
+              ) : peutEcrire(ctx) ? (
                 <Btn variant="green" onClick={function () { setAbonnementOuvert(true); }}>
                   Souscrire
                 </Btn>
-              )}
+              ) : null}
               <Btn variant="ghost" onClick={function () { setQrOuvert(true); }}>
                 QR
               </Btn>
-              <Btn
+              {peutEcrire(ctx) ? <Btn
                 variant={statut === 'suspendu' ? 'green' : 'red'}
                 onClick={function () { setBasculeOuverte(true); }}
               >
                 {statut === 'suspendu' ? 'Réactiver' : 'Suspendre'}
-              </Btn>
+              </Btn> : null}
             </>
           )
         }

@@ -14,6 +14,8 @@ import {
   nombre,
 } from '@/components/ui';
 import { BandeauMetriques } from '@/components/liste';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const TYPES = [
   {
@@ -46,7 +48,7 @@ const TYPES = [
 /* Carte de plan                                                       */
 /* ------------------------------------------------------------------ */
 
-function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
+function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe, editable }) {
   const [valeur, setValeur] = useState(String(plan.montant_gnf));
   const [edite, setEdite] = useState(false);
   const [montantVu, setMontantVu] = useState(plan.montant_gnf);
@@ -99,7 +101,7 @@ function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
         </div>
       </dl>
 
-      <label className="mt-3.5 block">
+      {editable ? <label className="mt-3.5 block">
         <span className="mb-1.5 flex items-baseline justify-between text-[9.5px] tracking-[1.4px] text-muted uppercase">
           Montant mensuel
           <span className="font-mono tracking-normal text-muted2 normal-case">
@@ -129,9 +131,9 @@ function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
             {occupe ? '…' : 'OK'}
           </Btn>
         </div>
-      </label>
+      </label> : null}
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
+      {editable ? <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
         <span className="font-mono text-[15px] font-bold text-txt tabular-nums">
           {montant(plan.montant_gnf)}
         </span>
@@ -145,7 +147,7 @@ function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
         >
           {plan.actif ? 'Retirer' : 'Remettre'}
         </button>
-      </div>
+      </div> : null}
     </article>
   );
 }
@@ -155,6 +157,7 @@ function CartePlan({ plan, accent, rang, onEnregistrer, onBasculer, occupe }) {
 /* ------------------------------------------------------------------ */
 
 export default function TarifsPage() {
+  const { ctx } = useContexte();
   const [plans, setPlans] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
@@ -162,11 +165,13 @@ export default function TarifsPage() {
   const [occupe, setOccupe] = useState(false);
 
   const charger = useCallback(async function () {
-    const { data, error } = await supabase
+    let requete = supabase
       .from('plans_tarifaires')
-      .select('id, code, libelle, montant_gnf, passages_par_semaine, type_menage, duree_jours, actif')
+      .select('id, code, libelle, montant_gnf, passages_par_semaine, type_menage, duree_jours, actif, commune_id, communes(nom, code)')
       .order('type_menage')
       .order('passages_par_semaine');
+    if (peutEcrire(ctx) && ctx?.communeId) requete = requete.eq('commune_id', ctx.communeId);
+    const { data, error } = await requete;
     setChargement(false);
     if (error) {
       setErreur(`Impossible de charger la grille : ${error.message}`);
@@ -174,7 +179,7 @@ export default function TarifsPage() {
     }
     setErreur(null);
     setPlans(data || []);
-  }, []);
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -309,6 +314,36 @@ export default function TarifsPage() {
         ]}
       />
 
+      {ctx?.niveau === 'region' ? (
+        <Bloc titre="Comparaison par commune" delai={80}>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-[12px]">
+              <thead>
+                <tr className="border-b border-line text-[10px] tracking-wide text-muted uppercase">
+                  <th className="px-2 py-2">Code</th>
+                  {[...new Set(plans.map(function (p) { return p.communes?.nom || p.commune_id; }).filter(Boolean))].map(function (nom) {
+                    return <th key={nom} className="px-2 py-2">{nom}</th>;
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {[...new Set(plans.map(function (p) { return p.code; }))].map(function (code) {
+                  return (
+                    <tr key={code} className="border-b border-line">
+                      <td className="px-2 py-2 font-mono font-bold">{code}</td>
+                      {[...new Set(plans.map(function (p) { return p.communes?.nom || p.commune_id; }).filter(Boolean))].map(function (nom) {
+                        const plan = plans.find(function (p) { return p.code === code && (p.communes?.nom || p.commune_id) === nom; });
+                        return <td key={nom} className="px-2 py-2 font-mono tabular-nums">{plan ? montant(plan.montant_gnf) : '—'}</td>;
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Bloc>
+      ) : null}
+
       <div className="mt-8 flex flex-col gap-9">
         {TYPES.map(function (t, i) {
           const liste = parType.get(t.code) ?? [];
@@ -344,6 +379,7 @@ export default function TarifsPage() {
                         occupe={occupe}
                         onEnregistrer={enregistrerMontant}
                         onBasculer={basculerActif}
+                        editable={peutEcrire(ctx)}
                       />
                     );
                   })}

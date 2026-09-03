@@ -39,19 +39,21 @@ export default function QrMenagesPage() {
   const [format, setFormat] = useState(3);
 
   useEffect(function () {
-    supabase
-      .from('quartiers')
-      .select('id, nom, code')
-      .eq('actif', true)
-      .order('nom')
+    const idCommune = ctx?.lectureCommuneId || ctx?.communeId;
+    const requete = idCommune
+      ? supabase.from('quartiers').select('id, nom, code').eq('commune_id', idCommune).eq('actif', true).order('nom')
+      : ctx?.pmeId
+        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom, code, actif)').eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom, code').eq('actif', true).order('nom');
+    requete
       .then(function ({ data, error }) {
         if (error) {
           setErreur(`Impossible de charger les quartiers : ${error.message}`);
           return;
         }
-        setQuartiers(data || []);
+        setQuartiers(ctx?.pmeId ? (data || []).map(function (x) { return x.quartiers; }) : data || []);
       });
-  }, []);
+  }, [ctx]);
 
   const charger = useCallback(
     async function () {

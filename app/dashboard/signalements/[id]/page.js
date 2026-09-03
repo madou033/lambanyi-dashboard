@@ -30,6 +30,8 @@ import {
   vuePilotageAbsente,
 } from '@/lib/signalements';
 import { supabase } from '@/lib/supabase';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const SELECT_AVEC_AFFECTATION =
   'id, auteur_id, type_signalement, description, statut, created_at, photo_url, quartier_id, assigne_pme_id, assigne_collecteur_id, assigne_le, assigne_par, quartiers(nom), assigne_pme:pme!signalements_assigne_pme_id_fkey(nom), assigne_collecteur:profils!signalements_assigne_collecteur_id_fkey(nom_complet), auteur:profils!signalements_auteur_id_fkey(nom_complet)';
@@ -76,6 +78,7 @@ function sousEvenement(ev) {
 
 export default function SignalementPage() {
   const { id } = useParams();
+  const { ctx } = useContexte();
   const [signalement, setSignalement] = useState(null);
   const [evenements, setEvenements] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -90,7 +93,13 @@ export default function SignalementPage() {
       const instantChargement = Date.now();
 
       const [pilotage, evenementsAvecProfils] = await Promise.all([
-        supabase.from('signalements_pilotage').select('*').eq('id', id).maybeSingle(),
+        (function () {
+          let requete = supabase.from('signalements_pilotage').select('*').eq('id', id);
+          if (ctx?.lectureCommuneId || ctx?.communeId) {
+            requete = requete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+          }
+          return requete.maybeSingle();
+        })(),
         supabase
           .from('signalements_evenements')
           .select('id, statut, message, created_at, auteur_id, profils(nom_complet, role)')
@@ -180,7 +189,7 @@ export default function SignalementPage() {
         document.title = `Signalement · ${libelleTypeSignalement(ligne.type_signalement)}`;
       }
     },
-    [id],
+    [id, ctx],
   );
 
   useEffect(
@@ -296,7 +305,7 @@ export default function SignalementPage() {
               ].join(' · '),
         }}
         actions={
-          chargement || !signalement || !ouvert ? null : (
+          chargement || !signalement || !ouvert || !peutEcrire(ctx) ? null : (
             <>
               {signalement.statut === 'nouveau' ? (
                 <Btn
@@ -438,7 +447,7 @@ export default function SignalementPage() {
           <Panel
             titre="Affectation"
             action={
-              chargement || !ouvert ? null : (
+            chargement || !ouvert || !peutEcrire(ctx) ? null : (
                 <Btn
                   variant="ghost"
                   className="px-2.5 py-1 text-[11px]"
@@ -483,7 +492,7 @@ export default function SignalementPage() {
           <Panel titre="Actions">
             {chargement ? (
               <p className="m-0 text-[12.5px] text-muted2">Chargement…</p>
-            ) : ouvert ? (
+            ) : ouvert && peutEcrire(ctx) ? (
               <div className="flex flex-col gap-2">
                 {signalement.statut === 'nouveau' ? (
                   <Btn

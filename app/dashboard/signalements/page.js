@@ -30,6 +30,8 @@ import {
 } from '@/components/ui';
 import { BandeauMetriques, Recherche, SelectFiltre, exporterCsv } from '@/components/liste';
 import { Bloc, Champ, Modal } from '@/components/ui';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const CarteSignalements = dynamic(
   function () {
@@ -105,6 +107,7 @@ function LigneSignalement({
   onStatut,
   onAffecter,
   enCours,
+  editable = true,
 }) {
   const ouvert = s.statut === 'nouveau' || s.statut === 'en_cours';
   const affectation = libelleAffectation(s);
@@ -202,7 +205,7 @@ function LigneSignalement({
           </a>
         ) : null}
 
-        {ouvert ? (
+        {ouvert && editable ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {s.statut === 'nouveau' ? (
               <button
@@ -263,6 +266,7 @@ function LigneSignalement({
 /* ------------------------------------------------------------------ */
 
 export default function SignalementsPage() {
+  const { ctx } = useContexte();
   const [signalements, setSignalements] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
@@ -279,11 +283,15 @@ export default function SignalementsPage() {
   const [recherche, setRecherche] = useState('');
 
   const charger = useCallback(async function () {
-    const pilotage = await supabase
+    let pilotageRequete = supabase
       .from('signalements_pilotage')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(500);
+    if (ctx?.lectureCommuneId || ctx?.communeId) {
+      pilotageRequete = pilotageRequete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+    }
+    const pilotage = await pilotageRequete;
     const instantChargement = Date.now();
     setChargement(false);
 
@@ -337,7 +345,7 @@ export default function SignalementsPage() {
 
     setInstant(instantChargement);
     setSignalements(normaliserSignalements(base.data, positions, instantChargement));
-  }, []);
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -674,8 +682,9 @@ export default function SignalementsPage() {
                       selectionne={selectionId === s.id}
                       onSelection={setSelectionId}
                       onStatut={demanderStatut}
-                      onAffecter={setAffectationCible}
+                      onAffecter={peutEcrire(ctx) ? setAffectationCible : function () {}}
                       enCours={enCours}
+                      editable={peutEcrire(ctx)}
                     />
                   );
                 })}

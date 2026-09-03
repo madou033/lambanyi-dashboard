@@ -29,6 +29,8 @@ import {
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 import { supabase } from '@/lib/supabase';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 async function apiHeaders(contentType) {
   const { data } = await supabase.auth.getSession();
@@ -97,9 +99,11 @@ function libelleType(code) {
 }
 
 export default function PointsDepotPage() {
+  const { ctx } = useContexte();
   const [points, setPoints] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [pmes, setPmes] = useState([]);
+  const [centre, setCentre] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
@@ -146,6 +150,20 @@ export default function PointsDepotPage() {
         .then(function (j) {
           setQuartiers(j.quartiers || []);
           setPmes(j.pme || []);
+          if ((j.quartiers || []).length) {
+            supabase
+              .from('quartiers')
+              .select('id, latitude, longitude')
+              .in('id', j.quartiers.map(function (q) { return q.id; }))
+              .order('nom')
+              .limit(1)
+              .maybeSingle()
+              .then(function (r) {
+                if (!r.error && r.data?.latitude != null && r.data?.longitude != null) {
+                  setCentre([Number(r.data.latitude), Number(r.data.longitude)]);
+                }
+              });
+          }
         })
         .catch(function () {
           setQuartiers([]);
@@ -312,10 +330,10 @@ export default function PointsDepotPage() {
             <Btn variant="ghost" onClick={exporter} disabled={filtres.length === 0}>
               Exporter
             </Btn>
-            <Btn variant="green" onClick={ouvrirCreation}>
+            {peutEcrire(ctx) ? <Btn variant="green" onClick={ouvrirCreation}>
               <IconPlus className="size-4" />
               Nouveau point
-            </Btn>
+            </Btn> : null}
           </>
         }
       />
@@ -366,7 +384,7 @@ export default function PointsDepotPage() {
             }
           >
             <div className="h-[460px] overflow-hidden rounded-xl border border-line">
-              <CartePointsDepot points={filtres} />
+              <CartePointsDepot points={filtres} centre={centre} />
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {[
@@ -499,6 +517,7 @@ export default function PointsDepotPage() {
                       </Badge>
                     </Td>
                     <Td align="right" className="no-print">
+                      {!peutEcrire(ctx) ? null : (
                       <span className="inline-flex gap-1.5">
                         <button
                           type="button"
@@ -519,6 +538,7 @@ export default function PointsDepotPage() {
                           {p.actif ? 'Désactiver' : 'Réactiver'}
                         </button>
                       </span>
+                      )}
                     </Td>
                   </Tr>
                 );
@@ -529,7 +549,7 @@ export default function PointsDepotPage() {
       </div>
 
       {/* Création / édition */}
-      <Modal
+      {peutEcrire(ctx) ? <Modal
         ouvert={modale}
         onFermer={function () {
           setModale(false);
@@ -706,6 +726,7 @@ export default function PointsDepotPage() {
           >
             <CartePointsDepot
               points={points}
+              centre={centre}
               idCourant={form.id}
               latitude={form.latitude}
               longitude={form.longitude}
@@ -717,10 +738,10 @@ export default function PointsDepotPage() {
             />
           </div>
         </div>
-      </Modal>
+      </Modal> : null}
 
       {/* Bascule actif/inactif */}
-      <Modal
+      {peutEcrire(ctx) ? <Modal
         ouvert={Boolean(bascule)}
         onFermer={function () {
           setBascule(null);
@@ -762,7 +783,7 @@ export default function PointsDepotPage() {
             </>
           )}
         </p>
-      </Modal>
+      </Modal> : null}
     </div>
   );
 }

@@ -33,6 +33,8 @@ import {
 import { IconPlus } from '@/components/icons';
 import { ModaleAbonnement } from '@/components/ModaleAbonnement';
 import { useContexte } from '@/components/ContexteProvider';
+import { peutEcrire } from '@/lib/contexte';
+import { filtreCommune } from '@/lib/perimetre';
 
 const TYPES_MENAGE = [
   { code: 'residentiel', label: 'Résidentiel' },
@@ -126,9 +128,35 @@ function MenagesPage() {
   const [messageForm, setMessageForm] = useState(null);
 
   const charger = useCallback(async function () {
-    const [registre, refQuartiers] = await Promise.all([
+    const idCommune = ctx?.lectureCommuneId || ctx?.communeId;
+    const quartiersReponse = idCommune
+      ? supabase.from('quartiers').select('id, nom').eq('commune_id', idCommune).order('nom')
+      : ctx?.pmeId
+        ? supabase
+            .from('pme_quartiers')
+            .select('quartiers!inner(id, nom)')
+            .eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom').order('nom');
+    const registreRequete = filtreCommune(
       supabase.from('menages_solde').select('*').order('code_menage', { ascending: true }),
-      supabase.from('quartiers').select('id, nom').order('nom'),
+      ctx,
+    );
+    const [registre, refQuartiers] = await Promise.all([
+      ctx?.pmeId
+        ? supabase
+            .from('menages_solde')
+            .select('*')
+            .in(
+              'quartier_id',
+              (await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId)).data?.map(
+                function (x) {
+                  return x.quartier_id;
+                },
+              ) || ['00000000-0000-0000-0000-000000000000'],
+            )
+            .order('code_menage', { ascending: true })
+        : registreRequete,
+      quartiersReponse,
     ]);
     setChargement(false);
     if (registre.error) {
@@ -137,8 +165,14 @@ function MenagesPage() {
     }
     setErreur(null);
     setLignes(registre.data || []);
-    setQuartiers(refQuartiers.data || []);
-  }, []);
+    setQuartiers(
+      ctx?.pmeId
+        ? (refQuartiers.data || []).map(function (x) {
+            return x.quartiers;
+          })
+        : refQuartiers.data || [],
+    );
+  }, [ctx]);
 
   useEffect(
     function () {
@@ -312,17 +346,19 @@ function MenagesPage() {
               >
                 Imprimer
               </Btn>
-              <Btn
-                variant="green"
-                onClick={function () {
-                  setMessageForm(null);
-                  setForm(FORM_VIDE);
-                  setModaleMenage(true);
-                }}
-              >
-                <IconPlus className="size-4" />
-                Nouveau ménage
-              </Btn>
+              {peutEcrire(ctx) ? (
+                <Btn
+                  variant="green"
+                  onClick={function () {
+                    setMessageForm(null);
+                    setForm(FORM_VIDE);
+                    setModaleMenage(true);
+                  }}
+                >
+                  <IconPlus className="size-4" />
+                  Nouveau ménage
+                </Btn>
+              ) : null}
             </>
           }
         />
