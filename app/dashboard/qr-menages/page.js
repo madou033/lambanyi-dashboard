@@ -14,6 +14,7 @@ import {
   nombre,
 } from '@/components/ui';
 import { Recherche } from '@/components/liste';
+import { useContexte } from '@/components/ContexteProvider';
 
 /** Colonnes de la planche — trois tient sur A4 portrait, quatre serre. */
 const FORMATS = [
@@ -28,6 +29,7 @@ const TAILLES_QR = { 3: 140, 4: 116, 5: 96 };
 const VIDE = [];
 
 export default function QrMenagesPage() {
+  const { ctx, profil, communeLecture } = useContexte();
   const [quartiers, setQuartiers] = useState([]);
   const [quartierId, setQuartierId] = useState('');
   const [menages, setMenages] = useState([]);
@@ -102,6 +104,14 @@ export default function QrMenagesPage() {
   const quartier = quartiers.find(function (q) {
     return q.id === quartierId;
   });
+  const territoire =
+    ctx?.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx?.niveau === 'pme'
+        ? profil?.pme?.nom ?? 'PME'
+        : profil?.communes?.nom ?? 'Commune';
 
   return (
     <div className="w-full">
@@ -173,7 +183,7 @@ export default function QrMenagesPage() {
       {/* En-tête d'impression */}
       <div className="entete-impression" style={{ display: 'none', marginBottom: 12 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-          Commune de Lambanyi — Codes QR des ménages
+          {territoire} — Codes QR des ménages
         </h2>
         <div style={{ fontSize: 12, marginTop: 4 }}>
           {quartier ? `${quartier.nom} (${quartier.code}) · ` : ''}
@@ -235,12 +245,12 @@ export default function QrMenagesPage() {
           }
           .carte {
             page-break-inside: avoid;
-            border-color: #bbb !important;
-            background: #fff !important;
-            color: #000 !important;
+            border-color: var(--lp-line2) !important;
+            background: var(--lp-panel) !important;
+            color: var(--lp-txt) !important;
           }
           .carte * {
-            color: #000 !important;
+            color: var(--lp-txt) !important;
           }
         }
       `}</style>

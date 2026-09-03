@@ -29,6 +29,8 @@ import {
   usePagination,
 } from '@/components/liste';
 import { IconPlus, IconRecherche } from '@/components/icons';
+import { peutEcrire } from '@/lib/contexte';
+import { useContexte } from '@/components/ContexteProvider';
 
 const MODES = [
   { code: 'especes', label: 'Espèces' },
@@ -464,6 +466,7 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
 
 function PaiementsPage() {
   const searchParams = useSearchParams();
+  const { ctx, profil, communeLecture } = useContexte();
   const qUrl = (searchParams.get('q') || '').trim();
   const [liste, setListe] = useState([]);
   const [totaux, setTotaux] = useState({ montant: 0, penalite: 0 });
@@ -580,6 +583,15 @@ function PaiementsPage() {
   }
 
   const filtreActif = fQuartier || fStatut || fMode || fDu || fAu || recherche;
+  const peutEncaisser = ctx?.niveau === 'commune' && peutEcrire(ctx);
+  const territoire =
+    ctx?.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx?.niveau === 'pme'
+        ? profil?.pme?.nom ?? 'PME'
+        : profil?.communes?.nom ?? 'Commune';
 
   return (
     <div className="w-full">
@@ -606,15 +618,17 @@ function PaiementsPage() {
               >
                 Imprimer
               </Btn>
-              <Btn
-                variant="green"
-                onClick={function () {
-                  setGuichet(true);
-                }}
-              >
-                <IconPlus className="size-4" />
-                Encaisser
-              </Btn>
+              {peutEncaisser ? (
+                <Btn
+                  variant="green"
+                  onClick={function () {
+                    setGuichet(true);
+                  }}
+                >
+                  <IconPlus className="size-4" />
+                  Encaisser
+                </Btn>
+              ) : null}
             </>
           }
         />
@@ -653,6 +667,7 @@ function PaiementsPage() {
       <div className="zone-impression">
         <EnteteImpression
           titre="Journal des encaissements"
+          territoire={territoire}
           contexte={`${fQuartier || 'tous quartiers'} · ${montant(totaux.montant)} encaissés`}
         />
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/components/ui';
@@ -20,6 +21,7 @@ import {
   useSidebarEpinglee,
 } from '@/components/Sidebar';
 import { PaletteCommandes } from '@/components/PaletteCommandes';
+import { ContexteProvider, useContexte } from '@/components/ContexteProvider';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -48,6 +50,7 @@ function initialesDe(nomComplet, secours) {
 const LIBELLES_ROLE = {
   admin: 'Administrateur',
   superviseur: 'Superviseur',
+  observateur_regional: 'Observateur régional',
   gerant_pme: 'Gérant PME',
   collecteur: 'Collecteur',
   citoyen: 'Citoyen',
@@ -58,11 +61,28 @@ const LIBELLES_ROLE = {
 /* ------------------------------------------------------------------ */
 
 export default function DashboardLayout({ children }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid h-full place-items-center bg-bg">
+          <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
+            Ouverture de la session…
+          </p>
+        </div>
+      }
+    >
+      <ContexteProvider>
+        <DashboardShell>{children}</DashboardShell>
+      </ContexteProvider>
+    </Suspense>
+  );
+}
+
+function DashboardShell({ children }) {
   const router = useRouter();
   const { theme, basculer } = useTheme();
-
-  const [profil, setProfil] = useState(null);
-  const [emailSession, setEmailSession] = useState(null);
+  const { ctx, profil, communeLecture } = useContexte();
+  const emailSession = null;
   const [enLigne, setEnLigne] = useState(true);
   const [horloge, setHorloge] = useState('--:--:--');
   const [paletteOuverte, setPaletteOuverte] = useState(false);
@@ -70,40 +90,12 @@ export default function DashboardLayout({ children }) {
   const [compteurs, setCompteurs] = useState({});
 
   const { epingle, basculer: basculerEpingle } = useSidebarEpinglee();
-  useRaccourcisNav();
+  useRaccourcisNav(ctx);
 
   const seDeconnecter = useCallback(
     async function () {
       await supabase.auth.signOut();
       router.push('/login');
-    },
-    [router],
-  );
-
-  /* Session + profil */
-  useEffect(
-    function () {
-      let annule = false;
-      async function verifier() {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          router.push('/login');
-          return;
-        }
-        const { data: p, error } = await supabase
-          .from('profils')
-          .select('nom_complet, role')
-          .eq('id', data.session.user.id)
-          .single();
-        if (annule) return;
-        setEnLigne(!error);
-        setEmailSession(data.session.user.email ?? null);
-        setProfil(p ?? { nom_complet: data.session.user.email, role: null });
-      }
-      verifier();
-      return function () {
-        annule = true;
-      };
     },
     [router],
   );
@@ -150,7 +142,12 @@ export default function DashboardLayout({ children }) {
           .from('paiements')
           .select('id', { count: 'exact', head: true })
           .in('statut', ['initie', 'en_attente']),
-        supabase.from('menages').select('id', { count: 'exact', head: true }),
+        (ctx?.lectureCommuneId
+          ? supabase
+              .from('menages')
+              .select('id', { count: 'exact', head: true })
+              .eq('commune_id', ctx.lectureCommuneId)
+          : supabase.from('menages').select('id', { count: 'exact', head: true })),
         supabase
           .from('menages')
           .select('id', { count: 'exact', head: true })
@@ -195,7 +192,7 @@ export default function DashboardLayout({ children }) {
       annule = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [ctx]);
 
   /* Ctrl/Cmd+K — palette de commandes */
   useEffect(function () {
@@ -256,7 +253,7 @@ export default function DashboardLayout({ children }) {
       : nomBrut;
   const initiales = initialesDe(nom, 'AG');
 
-  if (!profil) {
+  if (!profil || !ctx) {
     return (
       <div className="grid h-full place-items-center bg-bg">
         <p className="font-mono text-[12px] tracking-[2px] text-muted2 uppercase">
@@ -265,6 +262,15 @@ export default function DashboardLayout({ children }) {
       </div>
     );
   }
+
+  const territoire =
+    ctx.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx.niveau === 'pme'
+        ? profil.pme?.nom ?? 'PME'
+        : profil.communes?.nom ?? 'Commune';
 
   return (
     <div
@@ -278,6 +284,7 @@ export default function DashboardLayout({ children }) {
         onBasculerEpingle={basculerEpingle}
         badges={badges}
         compteurs={compteurs}
+        ctx={ctx}
         nom={nom}
         role={role}
         initiales={initiales}
@@ -286,7 +293,16 @@ export default function DashboardLayout({ children }) {
 
       <header className="lp-topbar flex items-center gap-3.5 border-b border-line px-4">
         <div className="hidden rounded-full border border-line2 px-3 py-1 font-mono text-[12px] tracking-wide text-green sm:block">
-          Commune de <b className="text-txt">Lambanyi</b>
+          {ctx.niveau === 'region' && ctx.lectureCommuneId ? (
+            <Link
+              href="/dashboard"
+              className="cursor-pointer text-txt outline-none focus-visible:ring-2 focus-visible:ring-blue"
+            >
+              <b>{territoire}</b>
+            </Link>
+          ) : (
+            <b className="text-txt">{territoire}</b>
+          )}
         </div>
 
         <button
@@ -347,6 +363,7 @@ export default function DashboardLayout({ children }) {
           router.push(to);
         }}
         actions={actionsPalette}
+        ctx={ctx}
       />
     </div>
   );

@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ROLES_DASHBOARD, contexteDepuisProfil } from '@/lib/contexte';
 import { Btn, Champ, cn } from '@/components/ui';
 import { IconMarque } from '@/components/icons';
 
-const ROLES_AUTORISES = ['admin', 'superviseur'];
+const ROLES_AUTORISES = ROLES_DASHBOARD;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,13 +33,21 @@ export default function LoginPage() {
 
     const { data: profil } = await supabase
       .from('profils')
-      .select('role')
+      .select('role, commune_id, pme_id')
       .eq('id', data.user.id)
       .single();
 
     if (!profil || !ROLES_AUTORISES.includes(profil.role)) {
       await supabase.auth.signOut();
-      setErreur('Accès réservé au personnel de la commune.');
+      setErreur('Accès réservé au pilotage (région, commune ou PME).');
+      setChargement(false);
+      return;
+    }
+    try {
+      contexteDepuisProfil(profil);
+    } catch {
+      await supabase.auth.signOut();
+      setErreur('Accès réservé au pilotage (région, commune ou PME).');
       setChargement(false);
       return;
     }
@@ -70,7 +79,7 @@ export default function LoginPage() {
           <div>
             <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Lambanyi Propre</p>
             <span className="mt-0.5 block text-[9px] tracking-[1.8px] text-muted uppercase">
-              Assainissement · Commune
+              Assainissement · Conakry
             </span>
           </div>
         </div>
@@ -117,7 +126,7 @@ export default function LoginPage() {
           <div className="text-[10px] tracking-[2.5px] text-muted2 uppercase">Accès personnel</div>
           <h2 className="font-display m-0 mt-1 text-[27px] font-bold text-txt">Connexion</h2>
           <p className="mt-1.5 mb-7 text-[12.5px] text-muted">
-            Réservé aux comptes administrateur et superviseur de la commune.
+            Réservé aux comptes de pilotage région, commune et PME.
           </p>
 
           {erreur ? (
@@ -177,7 +186,7 @@ export default function LoginPage() {
           </Btn>
 
           <p className="mt-6 mb-0 text-center font-mono text-[10px] tracking-wide text-muted2">
-            Commune de Lambanyi · Conakry
+            Région de Conakry · Assainissement
           </p>
         </div>
       </section>

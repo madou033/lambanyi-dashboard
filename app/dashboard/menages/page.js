@@ -32,6 +32,7 @@ import {
 } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 import { ModaleAbonnement } from '@/components/ModaleAbonnement';
+import { useContexte } from '@/components/ContexteProvider';
 
 const TYPES_MENAGE = [
   { code: 'residentiel', label: 'Résidentiel' },
@@ -105,6 +106,7 @@ function CelluleSolde({ m }) {
 }
 
 function MenagesPage() {
+  const { ctx, profil, communeLecture } = useContexte();
   const [lignes, setLignes] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -281,6 +283,14 @@ function MenagesPage() {
     })?.label,
     `${nombre(total)} foyers · ${montant(totalDu)} dus`,
   ].join(' · ');
+  const territoire =
+    ctx?.niveau === 'region'
+      ? ctx.lectureCommuneId
+        ? `Conakry → ${communeLecture?.nom ?? ctx.lectureCommuneId}`
+        : 'Région de Conakry'
+      : ctx?.niveau === 'pme'
+        ? profil?.pme?.nom ?? 'PME'
+        : profil?.communes?.nom ?? 'Commune';
 
   return (
     <div className="w-full">
@@ -369,7 +379,11 @@ function MenagesPage() {
       </div>
 
       <div className="zone-impression">
-        <EnteteImpression titre="Registre des ménages" contexte={contexteImpression} />
+        <EnteteImpression
+          titre="Registre des ménages"
+          territoire={territoire}
+          contexte={contexteImpression}
+        />
 
         <CarteListe
           titre="Registre des ménages"
