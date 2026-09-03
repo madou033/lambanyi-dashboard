@@ -182,6 +182,7 @@ export default function VueDEnsemble() {
   const { ctx, communeLecture } = useContexte();
   const [donnees, setDonnees] = useState(null);
   const [communes, setCommunes] = useState([]);
+  const [referentielCharge, setReferentielCharge] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [rechargement, setRechargement] = useState(0);
   const [dateLongue, setDateLongue] = useState('');
@@ -304,6 +305,14 @@ export default function VueDEnsemble() {
           requetePaiements.in('menage_id', ids);
         }
 
+        const requeteTournees = supabase
+          .from('tournees')
+          .select('id', { count: 'exact', head: true })
+          .eq('actif', true);
+        if (quartierIds) {
+          requeteTournees.in('quartier_id', quartierIds.length ? quartierIds : idsVides);
+        }
+
         const [
           menages,
           quartiers,
@@ -318,7 +327,7 @@ export default function VueDEnsemble() {
           requeteQuartiers,
           requeteAbonnements,
           requeteSoldes,
-          supabase.from('tournees').select('id', { count: 'exact', head: true }).eq('actif', true),
+          requeteTournees,
           requeteSignalements,
           // NB : la table `passages` horodate avec `created_at` (et non
           // `horodatage`, qui n'existe pas au schéma).
@@ -367,7 +376,18 @@ export default function VueDEnsemble() {
             supabase.from('quartiers').select('id, commune_id'),
             supabase.from('menages').select('id, commune_id'),
           ]);
-          if (!annule && !refCommunes.error && !refQuartiers.error && !refMenages.error) {
+          const erreurReferentiel = [refCommunes, refQuartiers, refMenages].find(function (r) {
+            return r.error;
+          });
+          if (erreurReferentiel) {
+            if (!annule) {
+              setCommunes([]);
+              setReferentielCharge(false);
+              setErreur(`Impossible de charger le référentiel régional : ${erreurReferentiel.error.message}`);
+            }
+            return;
+          }
+          if (!annule) {
             const quartiersParCommune = (refQuartiers.data || []).reduce(function (index, quartier) {
               index[quartier.commune_id] = (index[quartier.commune_id] || 0) + 1;
               return index;
@@ -385,9 +405,11 @@ export default function VueDEnsemble() {
                 };
               }),
             );
+            setReferentielCharge(true);
           }
         } else {
           setCommunes([]);
+          setReferentielCharge(false);
         }
       }
 
@@ -401,10 +423,10 @@ export default function VueDEnsemble() {
     [ctx, rechargement],
   );
 
-  const enChargement = !donnees && !erreur;
-  const d = donnees;
   const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
   const regionSansFiltre = ctx?.niveau === 'region' && !communeId;
+  const enChargement = !donnees || (regionSansFiltre && !referentielCharge);
+  const d = donnees;
 
   /* Dérivés */
   const signalements = d?.signalements ?? [];
