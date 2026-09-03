@@ -324,6 +324,13 @@ export default function SignalementsPage() {
 
     // Compatibilité temporaire tant que la migration créant la vue n'est pas
     // appliquée : table et jointures d'affectation, plus coordonnées de la vue carte.
+    let carteRequete = supabase.from('signalements_carte').select('id, latitude, longitude');
+    if (communeId || ctx?.pmeId) {
+      carteRequete = carteRequete.in(
+        'quartier_id',
+        idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'],
+      );
+    }
     let [base, localises] = await Promise.all([
       (ctx?.pmeId && !idsQuartiers.length
         ? Promise.resolve({ data: [], error: null })
@@ -335,7 +342,7 @@ export default function SignalementsPage() {
         .order('created_at', { ascending: false })
         .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
         .limit(500)),
-      supabase.from('signalements_carte').select('id, latitude, longitude'),
+      carteRequete,
     ]);
 
     // Si les colonnes d'affectation ne sont pas encore migrées non plus, la

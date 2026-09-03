@@ -92,7 +92,7 @@ function dateCourte(iso) {
 /* Guichet d'encaissement                                              */
 /* ------------------------------------------------------------------ */
 
-function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
+function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '', lectureCommuneId }) {
   const [requete, setRequete] = useState('');
   const [resultats, setResultats] = useState([]);
   const [cherche, setCherche] = useState(false);
@@ -134,7 +134,9 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '' }) {
     setCherche(true);
     setErreur(null);
     try {
-      const r = await fetch(`/api/paiements?mode=recherche&q=${encodeURIComponent(q)}`, {
+      const params = new URLSearchParams({ mode: 'recherche', q });
+      if (lectureCommuneId) params.set('lectureCommuneId', lectureCommuneId);
+      const r = await fetch(`/api/paiements?${params.toString()}`, {
         headers: await apiHeaders(),
       });
       if (!r.ok) throw new Error();
@@ -516,6 +518,7 @@ function PaiementsPage() {
       const p = parametres();
       p.set('mode', 'recents');
       p.set('limite', '200');
+      if (ctx?.lectureCommuneId) p.set('lectureCommuneId', ctx.lectureCommuneId);
       try {
         let perimetre = filtreCommune(supabase.from('quartiers').select('id, nom'), ctx);
         if (ctx?.pmeId) {
@@ -532,12 +535,19 @@ function PaiementsPage() {
         });
         if (!r.ok) throw new Error();
         const j = await r.json();
-        setListe(
+        const listeChargee =
           ctx?.pmeId
             ? (j.data || []).filter(function (paiement) { return nomsQuartiers.has(paiement.quartier); })
-            : j.data || [],
-        );
-        setTotaux({ montant: j.total || 0, penalite: j.total_penalite || 0 });
+            : j.data || [];
+        setListe(listeChargee);
+        setTotaux({
+          montant: listeChargee.reduce(function (total, paiement) {
+            return total + Number(paiement.montant_gnf || 0);
+          }, 0),
+          penalite: listeChargee.reduce(function (total, paiement) {
+            return total + Number(paiement.penalite_gnf || 0);
+          }, 0),
+        });
         setErreur(null);
       } catch {
         setErreur(
@@ -604,6 +614,7 @@ function PaiementsPage() {
   function exporter() {
     const p = parametres();
     p.set('mode', 'export');
+    if (ctx?.lectureCommuneId) p.set('lectureCommuneId', ctx.lectureCommuneId);
     window.location.href = `/api/paiements?${p.toString()}`;
   }
 
@@ -847,6 +858,7 @@ function PaiementsPage() {
       <Guichet
         ouvert={guichet}
         requeteInitiale={qUrl}
+        lectureCommuneId={ctx?.lectureCommuneId}
         onFermer={function () {
           setGuichet(false);
         }}

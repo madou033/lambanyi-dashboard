@@ -102,10 +102,23 @@ export default function MenagePage() {
       const maintenant = Date.now();
       const il30j = new Date(maintenant - 30 * 86_400_000).toISOString();
       const [soldeReponse, foyerReponse] = await Promise.all([
-        (function () {
+        (async function () {
           let requete = supabase.from('menages_solde').select('*').eq('menage_id', id);
           if (ctx?.lectureCommuneId || ctx?.communeId) {
             requete = requete.eq('commune_id', ctx.lectureCommuneId || ctx.communeId);
+          }
+          if (ctx?.pmeId) {
+            const liens = await supabase
+              .from('pme_quartiers')
+              .select('quartier_id')
+              .eq('pme_id', ctx.pmeId);
+            const idsQuartiers = (liens.data || []).map(function (lien) {
+              return lien.quartier_id;
+            });
+            requete = requete.in(
+              'quartier_id',
+              idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'],
+            );
           }
           return requete.maybeSingle();
         })(),
@@ -126,10 +139,12 @@ export default function MenagePage() {
         ? await supabase.from('pme_quartiers').select('quartier_id').eq('pme_id', ctx.pmeId).eq('quartier_id', foyerBrut.quartier_id).maybeSingle()
         : null;
       const foyerDansPerimetre =
-        !foyerBrut ||
-        (communeId && foyerQuartier?.commune_id === communeId) ||
-        (ctx?.pmeId && Boolean(pmeQuartier?.data)) ||
-        (!communeId && !ctx?.pmeId);
+        Boolean(foyerBrut) &&
+        Boolean(
+          (communeId && foyerQuartier?.commune_id === communeId) ||
+            (ctx?.pmeId && Boolean(pmeQuartier?.data)) ||
+            (!communeId && !ctx?.pmeId),
+        );
       const foyerCharge = foyerDansPerimetre ? foyerBrut : null;
       if (foyerBrut && !foyerDansPerimetre) {
         setSolde(null);
