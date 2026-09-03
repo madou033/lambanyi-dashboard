@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { Recherche } from '@/components/liste';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
 /** Colonnes de la planche — trois tient sur A4 portrait, quatre serre. */
 const FORMATS = [
@@ -37,14 +38,15 @@ export default function QrMenagesPage() {
   const [erreur, setErreur] = useState(null);
   const [recherche, setRecherche] = useState('');
   const [format, setFormat] = useState(3);
+  const [filtreCommune, setFiltreCommune] = useState('');
 
   useEffect(function () {
     const idCommune = ctx?.lectureCommuneId || ctx?.communeId;
     const requete = idCommune
-      ? supabase.from('quartiers').select('id, nom, code').eq('commune_id', idCommune).eq('actif', true).order('nom')
+      ? supabase.from('quartiers').select('id, nom, code, commune_id').eq('commune_id', idCommune).eq('actif', true).order('nom')
       : ctx?.pmeId
-        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom, code, actif)').eq('pme_id', ctx.pmeId)
-        : supabase.from('quartiers').select('id, nom, code').eq('actif', true).order('nom');
+        ? supabase.from('pme_quartiers').select('quartiers!inner(id, nom, code, actif, commune_id)').eq('pme_id', ctx.pmeId)
+        : supabase.from('quartiers').select('id, nom, code, commune_id').eq('actif', true).order('nom');
     requete
       .then(function ({ data, error }) {
         if (error) {
@@ -54,6 +56,16 @@ export default function QrMenagesPage() {
         setQuartiers(ctx?.pmeId ? (data || []).map(function (x) { return x.quartiers; }) : data || []);
       });
   }, [ctx]);
+
+  const quartiersFiltres = useMemo(
+    function () {
+      if (!filtreCommune) return quartiers;
+      return quartiers.filter(function (q) {
+        return q.commune_id === filtreCommune;
+      });
+    },
+    [quartiers, filtreCommune],
+  );
 
   const charger = useCallback(
     async function () {
@@ -138,6 +150,14 @@ export default function QrMenagesPage() {
         <BandeauErreur message={erreur} />
 
         <div className="lp-rise mt-6 flex flex-wrap items-center gap-2" style={{ animationDelay: '40ms' }}>
+          <FiltreCommuneRegion
+            ctx={ctx}
+            valeur={filtreCommune}
+            onChange={function (v) {
+              setFiltreCommune(v);
+              setQuartierId('');
+            }}
+          />
           <Selecteur
             value={quartierId}
             aria-label="Choisir un quartier"
@@ -146,7 +166,7 @@ export default function QrMenagesPage() {
             }}
           >
             <option value="">Choisir un quartier…</option>
-            {quartiers.map(function (q) {
+            {quartiersFiltres.map(function (q) {
               return (
                 <option key={q.id} value={q.id}>
                   {q.nom} ({q.code})

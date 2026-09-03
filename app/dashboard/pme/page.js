@@ -18,6 +18,7 @@ import {
 } from '@/components/ui';
 import { BandeauMetriques, CarteListe, Recherche } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
+import PmeRegional from './PmeRegional';
 
 const FORM_VIDE = { nom: '', responsable: '', telephone: '', email: '', numeroAgrement: '' };
 
@@ -398,6 +399,10 @@ export default function PmePage() {
     if (error) setErreur(`La mise à jour a échoué : ${error.message}`);
     setBascule(null);
     charger();
+  }
+
+  if (ctx?.niveau === 'region') {
+    return <PmeRegional />;
   }
 
   return (

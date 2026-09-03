@@ -32,6 +32,7 @@ import { BandeauMetriques, Recherche, SelectFiltre, exporterCsv } from '@/compon
 import { Bloc, Champ, Modal } from '@/components/ui';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
 const CarteSignalements = dynamic(
   function () {
@@ -281,30 +282,61 @@ export default function SignalementsPage() {
   const [filtreQuartier, setFiltreQuartier] = useState('');
   const [filtreType, setFiltreType] = useState('');
   const [filtrePeriode, setFiltrePeriode] = useState('');
+  const [filtreCommune, setFiltreCommune] = useState('');
   const [recherche, setRecherche] = useState('');
+  const [communeParQuartier, setCommuneParQuartier] = useState({});
 
   const charger = useCallback(async function () {
     const communeId = ctx?.lectureCommuneId || ctx?.communeId;
-    const quartiersReponse = communeId
-      ? await supabase.from('quartiers').select('id, latitude, longitude').eq('commune_id', communeId).order('nom')
-      : ctx?.pmeId
-        ? await supabase.from('pme_quartiers').select('quartiers!inner(id, latitude, longitude)').eq('pme_id', ctx.pmeId)
-        : { data: [], error: null };
+    let quartiersReponse;
+    if (communeId) {
+      quartiersReponse = await supabase
+        .from('quartiers')
+        .select('id, latitude, longitude, commune_id')
+        .eq('commune_id', communeId)
+        .order('nom');
+    } else if (ctx?.pmeId) {
+      quartiersReponse = await supabase
+        .from('pme_quartiers')
+        .select('quartiers!inner(id, latitude, longitude, commune_id)')
+        .eq('pme_id', ctx.pmeId);
+    } else {
+      quartiersReponse = await supabase
+        .from('quartiers')
+        .select('id, latitude, longitude, commune_id')
+        .eq('actif', true)
+        .order('nom');
+    }
     const quartiersAutorises = ctx?.pmeId
-      ? (quartiersReponse.data || []).map(function (x) { return x.quartiers; })
+      ? (quartiersReponse.data || []).map(function (x) {
+          return x.quartiers;
+        })
       : quartiersReponse.data || [];
-    const idsQuartiers = quartiersAutorises.map(function (q) { return q.id; });
-    const premierQuartier = quartiersAutorises.find(function (q) { return q.latitude != null && q.longitude != null; });
+    const idsQuartiers = quartiersAutorises.map(function (q) {
+      return q.id;
+    });
+    setCommuneParQuartier(
+      quartiersAutorises.reduce(function (index, q) {
+        if (q?.id && q.commune_id) index[q.id] = q.commune_id;
+        return index;
+      }, {}),
+    );
+    const premierQuartier = quartiersAutorises.find(function (q) {
+      return q.latitude != null && q.longitude != null;
+    });
     if (premierQuartier) setCentre([Number(premierQuartier.latitude), Number(premierQuartier.longitude)]);
     let pilotageRequete = supabase
       .from('signalements_pilotage')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(500);
-    if (communeId) {
-      pilotageRequete = pilotageRequete.eq('commune_id', communeId);
+    if (communeId && idsQuartiers.length) {
+      pilotageRequete = pilotageRequete.in('quartier_id', idsQuartiers);
     } else if (ctx?.pmeId) {
-      pilotageRequete = pilotageRequete.in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000']);
+      pilotageRequete = pilotageRequete.in(
+        'quartier_id',
+        idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'],
+      );
     }
     const pilotage = await pilotageRequete;
     const instantChargement = Date.now();
@@ -431,9 +463,14 @@ export default function SignalementsPage() {
 
   const quartiers = useMemo(
     function () {
+      const source = filtreCommune
+        ? signalements.filter(function (s) {
+            return communeParQuartier[s.quartier_id] === filtreCommune;
+          })
+        : signalements;
       return [
         ...new Set(
-          signalements
+          source
             .map(function (s) {
               return s.quartier_nom;
             })
@@ -441,7 +478,7 @@ export default function SignalementsPage() {
         ),
       ].sort();
     },
-    [signalements],
+    [signalements, filtreCommune, communeParQuartier],
   );
 
   const filtres = useMemo(
@@ -449,6 +486,7 @@ export default function SignalementsPage() {
       const q = recherche.trim().toLowerCase();
       const seuils = { jour: 1, semaine: 7, mois: 30 };
       return signalements.filter(function (s) {
+        if (filtreCommune && communeParQuartier[s.quartier_id] !== filtreCommune) return false;
         if (
           filtreStatut === 'en_retard' &&
           s.en_retard !== true &&
@@ -475,7 +513,17 @@ export default function SignalementsPage() {
           .includes(q);
       });
     },
-    [signalements, filtreStatut, filtreQuartier, filtreType, filtrePeriode, recherche, instant],
+    [
+      signalements,
+      filtreStatut,
+      filtreQuartier,
+      filtreType,
+      filtrePeriode,
+      filtreCommune,
+      communeParQuartier,
+      recherche,
+      instant,
+    ],
   );
 
   const compte = function (statut) {
@@ -627,6 +675,14 @@ export default function SignalementsPage() {
             valeur={recherche}
             onChange={setRecherche}
             placeholder="Description, quartier…"
+          />
+          <FiltreCommuneRegion
+            ctx={ctx}
+            valeur={filtreCommune}
+            onChange={function (v) {
+              setFiltreCommune(v);
+              setFiltreQuartier('');
+            }}
           />
           <SelectFiltre valeur={filtreType} onChange={setFiltreType} ariaLabel="Filtrer par type">
             <option value="">Tous les types</option>

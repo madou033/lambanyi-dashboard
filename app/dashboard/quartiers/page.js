@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion, besoinFiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 import { BandeauErreur, Btn, Champ, EmptyState, Modal, PageHeader, nombre } from '@/components/ui';
 import { CarteListe, Tableau, Td, Tr } from '@/components/liste';
 
@@ -19,6 +20,7 @@ export default function QuartiersPage() {
   const [edition, setEdition] = useState(null);
   const [modale, setModale] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
+  const [filtreCommune, setFiltreCommune] = useState('');
 
   const communeId = ctx?.lectureCommuneId || ctx?.communeId;
   const pmeId = ctx?.pmeId;
@@ -53,8 +55,12 @@ export default function QuartiersPage() {
       const ids = new Set(perimetres.filter((p) => p.pme_id === pmeId).map((p) => p.quartier_id));
       return quartiers.filter((q) => ids.has(q.id) && q.actif);
     }
-    return communeId ? quartiers.filter((q) => q.commune_id === communeId) : quartiers;
-  }, [pmeId, quartiers, perimetres, communeId]);
+    let liste = communeId ? quartiers.filter((q) => q.commune_id === communeId) : quartiers;
+    if (besoinFiltreCommuneRegion(ctx) && filtreCommune) {
+      liste = liste.filter((q) => q.commune_id === filtreCommune);
+    }
+    return liste;
+  }, [pmeId, quartiers, perimetres, communeId, ctx, filtreCommune]);
 
   const nomTerritoire = communeLecture?.nom || communes.find((c) => c.id === communeId)?.nom || 'Région de Conakry';
   const pmeParQuartier = useMemo(() => perimetres.reduce((index, p) => {
@@ -92,6 +98,11 @@ export default function QuartiersPage() {
         actions={peutEcrire ? <Btn variant="green" onClick={() => { setEdition(null); setForm(VIDE); setModale(true); }}>Nouveau quartier</Btn> : null}
       />
       <BandeauErreur message={erreur} onReessayer={charger} />
+      {besoinFiltreCommuneRegion(ctx) ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <FiltreCommuneRegion ctx={ctx} valeur={filtreCommune} onChange={setFiltreCommune} />
+        </div>
+      ) : null}
       <CarteListe titre={ctx.pmeId ? 'Mon périmètre' : 'Référentiel des quartiers'} sousTitre={chargement ? 'Chargement…' : `${nombre(visibles.length)} quartier${visibles.length > 1 ? 's' : ''}`}>
         <Tableau colonnes={[{ cle: 'nom', label: 'Quartier' }, { cle: 'code', label: 'Code' }, ...(ctx.pmeId ? [] : [{ cle: 'commune', label: 'Commune' }]), { cle: 'pme', label: 'PME affectées' }, ...(peutEcrire ? [{ cle: 'actions', label: 'Actions', noPrint: true }] : [])]} vide={chargement ? 'Chargement des quartiers…' : undefined}>
           {!chargement && visibles.length === 0 ? <tr><td colSpan={ctx.pmeId ? 4 : peutEcrire ? 5 : 4} className="px-5 py-10"><EmptyState>{ctx.pmeId ? 'Aucun quartier ne fait encore partie du périmètre de votre PME.' : 'Aucun quartier n’est enregistré dans ce périmètre.'}</EmptyState></td></tr> : null}

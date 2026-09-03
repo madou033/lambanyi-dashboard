@@ -30,6 +30,7 @@ import { MiniBarres } from '@/components/graphes';
 import { IconPlus } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { FiltreCommuneRegion, besoinFiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
 const FORM_VIDE = { nomComplet: '', telephone: '', email: '', motDePasse: '' };
 
@@ -70,6 +71,7 @@ function CollecteursPage() {
   const recherche = etat.q;
   const filtre = etat.filtre;
   const [rechercheSaisie, setRechercheSaisie] = useState(etat.q);
+  const [filtreCommune, setFiltreCommune] = useState('');
 
   const [modale, setModale] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
@@ -82,7 +84,10 @@ function CollecteursPage() {
     // à une PME. On borne via pme_id (périmètre PME, ou PME créatrice /
     // adoptante de la commune).
     let requete = supabase.from('collecteurs_activite').select('*').order('nom_complet');
-    const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
+    const communeId =
+      ctx?.lectureCommuneId ||
+      ctx?.communeId ||
+      (besoinFiltreCommuneRegion(ctx) && filtreCommune ? filtreCommune : null);
     const idsVides = ['00000000-0000-0000-0000-000000000000'];
 
     if (ctx?.niveau === 'pme' && ctx.pmeId) {
@@ -124,7 +129,7 @@ function CollecteursPage() {
     setErreur(null);
     setCollecteurs(data || []);
     setInstant(Date.now());
-  }, [ctx]);
+  }, [ctx, filtreCommune]);
 
   useEffect(
     function () {
@@ -361,13 +366,20 @@ function CollecteursPage() {
             : `${nombre(total)} résultat${total > 1 ? 's' : ''}${total !== collecteurs.length ? ` · ${nombre(collecteurs.length)} au total` : ''}`
         }
         outils={
-          <Recherche
-            valeur={rechercheSaisie}
-            onChange={function (v) {
-              setRechercheSaisie(v);
-            }}
-            placeholder="Nom, téléphone…"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Recherche
+              valeur={rechercheSaisie}
+              onChange={function (v) {
+                setRechercheSaisie(v);
+              }}
+              placeholder="Nom, téléphone…"
+            />
+            <FiltreCommuneRegion
+              ctx={ctx}
+              valeur={filtreCommune}
+              onChange={setFiltreCommune}
+            />
+          </div>
         }
         chips={
           <div className="flex flex-wrap gap-1.5">

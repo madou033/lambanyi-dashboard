@@ -36,7 +36,7 @@ export async function GET(request) {
   if (quartiers.error) return NextResponse.json({ error: quartiers.error.message }, { status: 400 });
 
   if (p.get("mode") === "referentiel") {
-    const q = await sb.from("quartiers").select("id, nom").in("id", quartiers.data).order("nom");
+    const q = await sb.from("quartiers").select("id, nom, commune_id").in("id", quartiers.data).order("nom");
     let m = sb.from("pme").select("id, nom").eq("actif", true);
     if (ctx.niveau === "pme") {
       m = m.eq("id", ctx.pmeId);
