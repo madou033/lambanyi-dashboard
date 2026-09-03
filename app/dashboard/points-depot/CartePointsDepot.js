@@ -4,6 +4,18 @@ import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useTheme } from '@/components/ThemeProvider';
+
+const TUILES = {
+  light: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap',
+  },
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  },
+};
 
 const CENTRE_LAMBANYI = [9.615, -13.622];
 
@@ -73,6 +85,8 @@ export default function CartePointsDepot({
   onChoisir,
   selectionnable = false,
 }) {
+  const { theme } = useTheme();
+  const tuile = TUILES[theme] ?? TUILES.dark;
   const lat = latitude === '' || latitude == null ? null : Number(latitude);
   const lon = longitude === '' || longitude == null ? null : Number(longitude);
   const centre = lat != null && lon != null ? [lat, lon] : CENTRE_LAMBANYI;
@@ -88,10 +102,7 @@ export default function CartePointsDepot({
       scrollWheelZoom={false}
       style={{ height: '100%', width: '100%' }}
     >
-      <TileLayer
-        attribution="&copy; OpenStreetMap"
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer key={theme} attribution={tuile.attribution} url={tuile.url} />
 
       {selectionnable ? <CapteurClic onChoisir={onChoisir} /> : null}
       <Recentrer lat={lat} lon={lon} />

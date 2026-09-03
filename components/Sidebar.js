@@ -50,6 +50,11 @@ function Badge({ info, className }) {
   );
 }
 
+/** Chip / kbd sur nav : encre seulement posé sur un aplat lime (`bg-green`). */
+function classeChipNav({ surAplatLime }) {
+  return surAplatLime ? 'border-encre/30 text-encre' : 'border-nav-line text-nav-muted';
+}
+
 /** Compteur discret — le chiffre du moment d'une destination. */
 function Compte({ valeur, attenue }) {
   if (valeur == null) return null;
@@ -57,7 +62,7 @@ function Compte({ valeur, attenue }) {
     <span
       className={cn(
         'shrink-0 font-mono text-[11px] tabular-nums transition-colors duration-150',
-        attenue ? 'text-muted2 group-hover/lien:text-muted' : 'text-muted',
+        attenue ? 'text-nav-muted group-hover/lien:text-nav-txt' : 'text-encre',
       )}
     >
       {valeur > 999 ? `${Math.floor(valeur / 1000)}k` : valeur}
@@ -116,7 +121,7 @@ function Rail({ badges, pathname, initiales }) {
               key={section.id}
               className={cn(
                 'relative grid size-10 place-items-center rounded-xl transition-colors duration-150',
-                actif ? 'bg-panel2 text-green' : 'text-muted',
+                actif ? 'bg-green text-encre' : 'text-nav-muted',
               )}
             >
               {actif ? (
@@ -130,9 +135,9 @@ function Rail({ badges, pathname, initiales }) {
       </div>
 
       <div className="flex h-[60px] shrink-0 items-center">
-        <span className="relative grid size-9 place-items-center rounded-full border border-line2 bg-panel2 font-mono text-[12px] font-bold text-txt">
+        <span className="relative grid size-9 place-items-center rounded-full border border-nav-line bg-nav2 font-mono text-[12px] font-bold text-nav-txt">
           {initiales}
-          <span className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-bg2 bg-teal" />
+          <span className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-nav bg-teal" />
         </span>
       </div>
     </div>
@@ -158,29 +163,37 @@ function SousLien({ lien, badge, compteur, actif }) {
         'group/lien flex items-center gap-2 rounded-lg py-[7px] pr-2 pl-2.5 text-[12.5px] outline-none transition-colors duration-150',
         'focus-visible:ring-2 focus-visible:ring-blue',
         actif
-          ? 'bg-panel2 font-semibold text-txt'
-          : lien.disponible
-            ? 'text-muted hover:bg-panel hover:text-txt'
-            : 'text-muted2 hover:bg-panel hover:text-muted',
+          ? 'bg-green font-semibold text-encre'
+          : 'text-nav-muted hover:bg-nav2 hover:text-nav-txt',
       )}
     >
       <span
         aria-hidden
         className={cn(
           'size-1.5 shrink-0 rounded-full transition-colors duration-150',
-          actif ? 'bg-green' : 'bg-line2 group-hover/lien:bg-muted',
+          actif ? 'bg-encre' : 'bg-nav-line group-hover/lien:bg-nav-txt',
         )}
       />
       <span className="min-w-0 flex-1 truncate">{lien.label}</span>
 
       {lien.disponible && raccourci !== undefined ? (
-        <kbd className="shrink-0 rounded border border-line2 px-1 font-mono text-[9px] text-muted opacity-0 transition-opacity duration-150 group-hover/lien:opacity-60">
+        <kbd
+          className={cn(
+            'shrink-0 rounded border px-1 font-mono text-[9px] opacity-0 transition-opacity duration-150 group-hover/lien:opacity-60',
+            classeChipNav({ surAplatLime: actif }),
+          )}
+        >
           Alt {raccourci}
         </kbd>
       ) : null}
 
       {!lien.disponible ? (
-        <span className="shrink-0 rounded border border-line2 px-1 py-px text-[8.5px] tracking-wide text-muted2 uppercase">
+        <span
+          className={cn(
+            'shrink-0 rounded border px-1 py-px text-[8.5px] tracking-wide uppercase',
+            classeChipNav({ surAplatLime: actif }),
+          )}
+        >
           bientôt
         </span>
       ) : alerte ? (
@@ -229,14 +242,14 @@ function Panneau({
     <div
       style={{ width: LARGEUR_PANNEAU }}
       className={cn(
-        'absolute inset-y-0 left-0 z-30 flex flex-col bg-bg2',
+        'absolute inset-y-0 left-0 z-30 flex flex-col bg-nav',
         'transition-[opacity,transform,box-shadow] duration-200 ease-out',
         visible ? 'translate-x-0 opacity-100' : 'pointer-events-none -translate-x-1 opacity-0',
         // L'ombre ne sert qu'à détacher le panneau du contenu qu'il recouvre :
         // épinglé, il occupe sa propre colonne et n'en a pas besoin.
         visible && !epingle
-          ? 'border-r border-line2 shadow-[18px_0_50px_rgba(0,0,0,.45)]'
-          : 'border-r border-line',
+          ? 'border-r border-nav-line shadow-[18px_0_50px_rgba(0,0,0,.45)]'
+          : 'border-r border-nav-line',
       )}
     >
       {/* Marque — le pictogramme reste exactement à la place qu'il occupe dans
@@ -247,10 +260,10 @@ function Panneau({
           <IconMarque className="size-[18px]" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13.5px] font-bold tracking-wide text-txt">
+          <span className="block truncate text-[13.5px] font-bold tracking-wide text-nav-txt">
             Lambanyi Propre
           </span>
-          <span className="mt-0.5 block truncate text-[9px] tracking-[1.8px] text-muted uppercase">
+          <span className="mt-0.5 block truncate text-[9px] tracking-[1.8px] text-nav-muted uppercase">
             Assainissement · Commune
           </span>
         </span>
@@ -267,8 +280,8 @@ function Panneau({
             'grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg outline-none transition-colors duration-150',
             'focus-visible:ring-2 focus-visible:ring-blue',
             epingle
-              ? 'bg-panel2 text-green hover:brightness-110'
-              : 'text-muted2 hover:bg-panel hover:text-txt',
+              ? 'bg-nav2 text-green hover:brightness-110'
+              : 'text-nav-muted hover:bg-nav2 hover:text-nav-txt',
           )}
         >
           {/* Couchée quand la barre n'est pas retenue, droite quand elle l'est. */}
@@ -304,13 +317,16 @@ function Panneau({
                 aria-current={actif ? 'page' : undefined}
                 className={cn(
                   'group/lien flex items-center gap-2.5 rounded-xl px-2 py-1 outline-none transition-colors duration-150',
-                  'hover:bg-panel focus-visible:ring-2 focus-visible:ring-blue',
+                  'focus-visible:ring-2 focus-visible:ring-blue',
+                  actif
+                    ? 'bg-green font-semibold text-encre'
+                    : 'text-nav-muted hover:bg-nav2 hover:text-nav-txt',
                 )}
               >
                 <span
                   className={cn(
                     'grid size-10 shrink-0 place-items-center rounded-xl transition-colors duration-150',
-                    actif ? 'bg-panel2 text-green' : 'text-muted group-hover/lien:text-txt',
+                    actif ? 'text-encre' : 'text-nav-muted group-hover/lien:text-nav-txt',
                   )}
                 >
                   <Icon className="size-[19px]" />
@@ -318,7 +334,7 @@ function Panneau({
                 <span
                   className={cn(
                     'min-w-0 flex-1 truncate text-[12.5px] transition-colors duration-150',
-                    actif ? 'font-semibold text-txt' : 'text-muted group-hover/lien:text-txt',
+                    actif ? 'font-semibold text-encre' : 'text-nav-muted group-hover/lien:text-nav-txt',
                   )}
                 >
                   {section.titre}
@@ -328,7 +344,12 @@ function Panneau({
                 ) : (
                   <Compte valeur={compteurs[lienSolo.to]} attenue={!actif} />
                 )}
-                <span className="shrink-0 rounded border border-line2 px-1 py-px font-mono text-[8.5px] tracking-wider text-muted2">
+                <span
+                  className={cn(
+                    'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
+                    classeChipNav({ surAplatLime: actif }),
+                  )}
+                >
                   {section.domaine}
                 </span>
               </Link>
@@ -341,7 +362,7 @@ function Panneau({
                 <span
                   className={cn(
                     'grid size-10 shrink-0 place-items-center rounded-xl transition-colors duration-150',
-                    actif ? 'bg-panel2 text-green' : 'text-muted',
+                    actif ? 'bg-green text-encre' : 'text-nav-muted',
                   )}
                 >
                   <Icon className="size-[19px]" />
@@ -349,12 +370,17 @@ function Panneau({
                 <span
                   className={cn(
                     'min-w-0 flex-1 truncate text-[10px] tracking-[1.5px] uppercase',
-                    actif ? 'text-txt' : 'text-muted2',
+                    actif ? 'text-nav-txt' : 'text-nav-muted',
                   )}
                 >
                   {section.titre}
                 </span>
-                <span className="shrink-0 rounded border border-line2 px-1 py-px font-mono text-[8.5px] tracking-wider text-muted2">
+                <span
+                  className={cn(
+                    'shrink-0 rounded border px-1 py-px font-mono text-[8.5px] tracking-wider',
+                    classeChipNav({ surAplatLime: false }),
+                  )}
+                >
                   {section.domaine}
                 </span>
               </div>
@@ -363,7 +389,7 @@ function Panneau({
               <div
                 className={cn(
                   'ml-[27px] flex flex-col gap-0.5 border-l pl-3 transition-colors duration-200',
-                  actif ? 'border-green/50' : 'border-line2',
+                  actif ? 'border-green/50' : 'border-nav-line',
                 )}
               >
                 {section.liens.map(function (lien) {
@@ -384,11 +410,11 @@ function Panneau({
       </nav>
 
       {/* Profil */}
-      <div ref={menuRef} className="relative shrink-0 border-t border-line px-2 py-2">
+      <div ref={menuRef} className="relative shrink-0 border-t border-nav-line px-2 py-2">
         {menuOuvert ? (
           <div
             role="menu"
-            className="absolute right-2 bottom-[calc(100%+6px)] left-2 z-10 rounded-xl border border-line2 bg-panel p-1.5 shadow-[0_14px_40px_rgba(0,0,0,.45)] motion-safe:animate-[lp-rise_.18s_ease-out]"
+            className="absolute right-2 bottom-[calc(100%+6px)] left-2 z-10 rounded-xl border border-nav-line bg-nav p-1.5 shadow-[0_14px_40px_rgba(0,0,0,.45)] motion-safe:animate-[lp-rise_.18s_ease-out]"
           >
             <Link
               href="/dashboard/profil"
@@ -396,7 +422,7 @@ function Panneau({
               onClick={function () {
                 setMenuOuvert(false);
               }}
-              className={cn(ITEM, 'text-muted hover:bg-panel2 hover:text-txt')}
+              className={cn(ITEM, 'text-nav-muted hover:bg-nav2 hover:text-nav-txt')}
             >
               <IconUtilisateur className="size-4" /> Mon profil
             </Link>
@@ -428,20 +454,20 @@ function Panneau({
           }}
           className={cn(
             'flex w-full cursor-pointer items-center gap-2.5 rounded-xl p-1 text-left outline-none transition-colors',
-            'hover:bg-panel focus-visible:ring-2 focus-visible:ring-blue',
-            menuOuvert && 'bg-panel',
+            'hover:bg-nav2 focus-visible:ring-2 focus-visible:ring-blue',
+            menuOuvert && 'bg-nav2',
           )}
         >
-          <span className="relative grid size-9 shrink-0 place-items-center rounded-full border border-line2 bg-panel2 font-mono text-[12px] font-bold text-txt">
+          <span className="relative grid size-9 shrink-0 place-items-center rounded-full border border-nav-line bg-nav2 font-mono text-[12px] font-bold text-nav-txt">
             {initiales}
             <span
               aria-hidden
-              className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-bg2 bg-teal"
+              className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-nav bg-teal"
             />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12.5px] font-semibold text-txt">{nom}</span>
-            <span className="block truncate text-[10px] text-muted">{role ?? 'En session'}</span>
+            <span className="block truncate text-[12.5px] font-semibold text-nav-txt">{nom}</span>
+            <span className="block truncate text-[10px] text-nav-muted">{role ?? 'En session'}</span>
           </span>
         </button>
       </div>
@@ -521,8 +547,8 @@ export function Sidebar({
       }}
       onBlur={surBlur}
       className={cn(
-        'relative z-40 row-span-2 bg-bg2 transition-[width] duration-300 ease-out',
-        !epingle && 'border-r border-line',
+        'relative z-40 row-span-2 bg-nav transition-[width] duration-300 ease-out',
+        !epingle && 'border-r border-nav-line',
       )}
     >
       {!epingle ? <Rail badges={badges} pathname={pathname} initiales={initiales} /> : null}

@@ -78,6 +78,10 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
 
 ## 2. Couleur
 
+**Vert = barre + décision, jamais les murs.** Le vert de marque vit dans la
+sidebar (`nav*`) et dans les CTA / états actifs. Les surfaces de contenu
+(`bg`, `panel`, …) restent neutres — blanc / charbon froid, pas forêt.
+
 ### 2.1 Tokens — `app/globals.css`
 
 ```css
@@ -105,22 +109,28 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --color-red: var(--lp-red);
   --color-violet: var(--lp-violet);
   --color-encre: var(--lp-encre);
+  --color-nav: var(--lp-nav);
+  --color-nav2: var(--lp-nav2);
+  --color-nav-line: var(--lp-nav-line);
+  --color-nav-txt: var(--lp-nav-txt);
+  --color-nav-muted: var(--lp-nav-muted);
 }
 
-/* Sombre — thème par défaut */
+/* Sombre — thème par défaut. Surfaces ardoise froide (zéro teinte verte) ;
+   barre nav forêt adoucie ; accent vert sauge (pas fluo). */
 :root,
 [data-theme="dark"] {
-  --lp-bg: #0c1a16;
-  --lp-bg2: #0a1613;
-  --lp-panel: #12251f;
-  --lp-panel2: #16302a;
-  --lp-line: #22453a;
-  --lp-line2: #2e5a4b;
-  --lp-txt: #eaf5ef;
-  --lp-muted: #9cc9b4;
-  --lp-muted2: #7ba894;
-  --lp-green: #3ed393;
-  --lp-greend: #2bb87c;
+  --lp-bg: #111314;
+  --lp-bg2: #0d0e10;
+  --lp-panel: #1a1c1f;
+  --lp-panel2: #22252a;
+  --lp-line: #2e3238;
+  --lp-line2: #42484f;
+  --lp-txt: #f1f2f3;
+  --lp-muted: #b4b8bd;
+  --lp-muted2: #9aa0a6;
+  --lp-green: #83af99;
+  --lp-greend: #507c66;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
   --lp-blue: #7bbbe4;
@@ -128,22 +138,28 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: dark;
 }
 
-/* Clair — même langage, contrastes inversés */
+/* Clair — fond un peu moins lavé ; textes secondaires nettement plus foncés
+   pour que labels / kickers / légendes ne se dissolvent pas dans le blanc. */
 [data-theme="light"] {
-  --lp-bg: #eff3f1;
-  --lp-bg2: #e3e9e6;
+  --lp-bg: #e8ecea;
+  --lp-bg2: #dce1df;
   --lp-panel: #ffffff;
-  --lp-panel2: #f3f7f5;
-  --lp-line: #d2dcd7;
-  --lp-line2: #aebdb6;
-  --lp-txt: #0c1a16;
-  --lp-muted: #41564c;
-  --lp-muted2: #566c62;
-  --lp-green: #076b41;
-  --lp-greend: #05502f;
+  --lp-panel2: #f0f3f1;
+  --lp-line: #c2cbc6;
+  --lp-line2: #8f9b94;
+  --lp-txt: #0a100e;
+  --lp-muted: #24302b;
+  --lp-muted2: #334039;
+  --lp-green: #376249;
+  --lp-greend: #254131;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -151,9 +167,28 @@ Le serif (`font-display`) ne sort **que** pour les titres — jamais dans un tab
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: light;
 }
 ```
+
+Hex figés depuis `app/globals.css` (identité Pharmly). Les tokens `nav*`
+sont **identiques** en clair et en sombre : la barre de marque ne suit pas
+le thème du contenu.
+
+| Token | Classe | Rôle | Hex (fixe) |
+|---|---|---|---|
+| `nav` | `bg-nav` | Fond sidebar / rail | `#1c352e` |
+| `nav2` | `bg-nav2` | Panneau actif / survol dans la nav | `#25423a` |
+| `nav-line` | `border-nav-line` | Filets dans la nav | `#3c5349` |
+| `nav-txt` | `text-nav-txt` | Texte principal nav | `#eaf5ef` |
+| `nav-muted` | `text-nav-muted` | Texte secondaire nav | `#9bb5aa` |
+
+Item actif de la nav : aplat `green` + `text-encre` (pastille sauge sur forêt).
 
 ### 2.2 Sémantique — un token, un sens
 
@@ -181,8 +216,8 @@ Conséquence, les deux thèmes inversent la logique :
 
 | | Accents | Encre sur aplat (`--lp-encre`) |
 |---|---|---|
-| **Sombre** | clairs (`#3ed393`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
-| **Clair** | foncés (`#076b41`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
+| **Sombre** | clairs (`#83af99`, `#ff7b85`…) — lisibles sur les surfaces foncées | **foncée** `#05130e` |
+| **Clair** | foncés (`#376249`, `#a81d29`…) — lisibles sur les surfaces claires | **blanche** `#ffffff` |
 
 D'où la règle : **tout texte posé sur un aplat d'accent utilise `text-encre`**, jamais une couleur
 en dur. `bg-green text-encre` est correct dans les deux thèmes ; `bg-green text-[#04231a]` devient
@@ -191,13 +226,19 @@ illisible en clair, où le vert est foncé.
 Un pictogramme placé sur un aplat (le logo) se dessine en `currentColor` et son conteneur porte
 `text-encre` — il suit ainsi le thème sans duplication.
 
-**Les gris ne sont pas verts.** En clair, `muted` et `muted2` sont des ardoises à peine teintées
-(`#41564c`, `#566c62`), pas des verts pâles : une palette entièrement teintée délave l'écran et rend
-le texte secondaire illisible.
+**Les gris ne sont pas verts — aussi en sombre.** En clair, `muted` et `muted2`
+sont des ardoises foncées (`#24302b`, `#334039`), pas des verts pâles : le
+texte secondaire doit rester lisible sur blanc. En sombre, ce sont des gris
+neutres (`#b4b8bd`, `#9aa0a6`) sur des surfaces ardoise froide (`#111314`,
+`#1a1c1f`), sans teinte verte. Une palette entièrement teintée délave
+l'écran ; trop de vert en sombre et trop de pâleur en clair rendent le
+contenu illisible.
 
-**Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes : chaque jeton de texte
-contre les quatre surfaces, l'encre sur chaque aplat, et le texte de badge sur sa propre teinte à
-15 %. Il doit rendre **0 échec** — à relancer après toute retouche de palette.
+**Vérification.** Le script `scripts/contraste.mjs` valide les deux thèmes :
+chaque jeton de texte contre les quatre surfaces, l'encre sur chaque aplat,
+le texte de badge sur sa propre teinte à 15 %, et `nav-txt` / `nav-muted`
+contre `nav` / `nav2`. Il doit rendre **0 échec** — à relancer après toute
+retouche de palette.
 
 ### 2.4 Teintes dérivées
 
@@ -236,22 +277,22 @@ La barre a **deux régimes**, commandés par la **punaise** logée dans l'en-tê
 bordure. On épingle ce qu'on est en train de regarder : le geste est « je garde ça ouvert », pas
 « je manœuvre une colonne ». Bouton `size-7 rounded-lg`, `aria-pressed` porte l'état.
 
-La punaise est **couchée** (`rotate-45`, `text-muted2`) quand la barre n'est pas retenue, **droite**
-(`bg-panel2 text-green`) quand elle l'est — la métaphore se lit sans libellé.
+La punaise est **couchée** (`rotate-45`, `text-nav-muted`) quand la barre n'est pas retenue, **droite**
+(`bg-nav2 text-green`) quand elle l'est — la métaphore se lit sans libellé.
 
 C'est aussi le **premier élément focusable du panneau** : un utilisateur au clavier tabule dans la
 barre, ce qui la révèle, et tombe immédiatement sur la punaise pour la retenir.
 
 L'`<aside>` est **toujours en `data-theme="dark"`**, même quand l'app est en clair : la barre foncée
-tranche sur le contenu au lieu de se fondre en gris. `bg-bg2`, `z-40`.
+tranche sur le contenu au lieu de se fondre en gris. `bg-nav`, filets `border-nav-line`, `z-40`.
 
 **Le rail (56 px, `aria-hidden`)** — purement visuel, il n'est monté qu'en régime replié ; le panneau
 porte la navigation réelle, et dupliquer les liens doublerait l'arbre pour un lecteur d'écran.
 Pictogramme de marque dans une bande de 60 px · une icône `size-10 rounded-xl` par section, la
-section active en `bg-panel2 text-green` avec une **barre verte 3 px** au bord gauche (`lp-indicator`)
+section active en `bg-green text-encre` avec une **barre verte 3 px** au bord gauche (`lp-indicator`)
 et son badge en `absolute -top-1 -right-1` · avatar dans une bande de 60 px en bas.
 
-**Le panneau (268 px)** — `absolute inset-y-0 left-0 z-30`, même `bg-bg2` que le rail. Transition
+**Le panneau (268 px)** — `absolute inset-y-0 left-0 z-30`, même `bg-nav` que le rail. Transition
 200 ms sur `opacity` + `translate-x`. Fermé il garde `pointer-events-none` mais **reste dans l'ordre
 de tabulation** : c'est ce qui permet au focus clavier de le rouvrir. L'ombre portée
 (`shadow-[18px_0_50px_rgba(0,0,0,.45)]`) ne s'applique **qu'en régime replié**, où le panneau
@@ -282,14 +323,14 @@ Deux registres, jamais les deux à la fois sur une même ligne :
 - **Badge d'alerte** — pastille pleine `rouge` ou `or`, pour ce qui réclame une action
   (signalements à traiter, paiements à confirmer). Animée `lp-badge-pop`, plus `lp-pulse-red` si
   urgent, `99+` au-delà de 99.
-- **Compteur** — sinon, la volumétrie en mono `text-[11px] tabular-nums text-muted2`, abrégée en
-  `k` au-delà de 999. Neutre par nature : il informe, il n'appelle pas.
+- **Compteur** — sinon, la volumétrie en mono `text-[11px] tabular-nums text-nav-muted` (encre si
+  la ligne est lime), abrégée en `k` au-delà de 999. Neutre par nature : il informe, il n'appelle pas.
 
 Le rail, lui, ne montre que les **alertes** : une section y hérite du badge le plus urgent de ses
 enfants (rouge > or). La volumétrie n'a pas sa place sur 56 px.
 
 **Le fil vert.** Quand une section est active, le filet vertical qui tient ses sous-liens passe de
-`border-line2` à `border-green/50`. Un trait continu relie ainsi l'icône verte à ses destinations —
+`border-nav-line` à `border-green/50`. Un trait continu relie ainsi l'icône verte à ses destinations —
 la position dans l'arbre se lit sans compter les indentations.
 
 **Modèle de données.** Chaque section porte `id`, `titre`, `domaine` (sigle mono en étiquette),

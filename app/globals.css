@@ -26,22 +26,28 @@
   --color-red: var(--lp-red);
   --color-violet: var(--lp-violet);
   --color-encre: var(--lp-encre);
+  --color-nav: var(--lp-nav);
+  --color-nav2: var(--lp-nav2);
+  --color-nav-line: var(--lp-nav-line);
+  --color-nav-txt: var(--lp-nav-txt);
+  --color-nav-muted: var(--lp-nav-muted);
 }
 
-/* Sombre — thème par défaut */
+/* Sombre — thème par défaut. Surfaces ardoise froide (zéro teinte verte) ;
+   barre nav forêt adoucie ; accent vert sauge (pas fluo). */
 :root,
 [data-theme="dark"] {
-  --lp-bg: #0c1a16;
-  --lp-bg2: #0a1613;
-  --lp-panel: #12251f;
-  --lp-panel2: #16302a;
-  --lp-line: #22453a;
-  --lp-line2: #2e5a4b;
-  --lp-txt: #eaf5ef;
-  --lp-muted: #9cc9b4;
-  --lp-muted2: #7ba894;
-  --lp-green: #3ed393;
-  --lp-greend: #2bb87c;
+  --lp-bg: #111314;
+  --lp-bg2: #0d0e10;
+  --lp-panel: #1a1c1f;
+  --lp-panel2: #22252a;
+  --lp-line: #2e3238;
+  --lp-line2: #42484f;
+  --lp-txt: #f1f2f3;
+  --lp-muted: #b4b8bd;
+  --lp-muted2: #9aa0a6;
+  --lp-green: #83af99;
+  --lp-greend: #507c66;
   --lp-gold: #e8b957;
   --lp-teal: #35c9b1;
   --lp-blue: #7bbbe4;
@@ -49,22 +55,28 @@
   --lp-violet: #b3a6f0;
   /* Encre posée SUR un aplat d'accent : les accents sont clairs ici. */
   --lp-encre: #05130e;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: dark;
 }
 
-/* Clair — même langage, contrastes inversés */
+/* Clair — fond un peu moins lavé ; textes secondaires nettement plus foncés
+   pour que labels / kickers / légendes ne se dissolvent pas dans le blanc. */
 [data-theme="light"] {
-  --lp-bg: #eff3f1;
-  --lp-bg2: #e3e9e6;
+  --lp-bg: #e8ecea;
+  --lp-bg2: #dce1df;
   --lp-panel: #ffffff;
-  --lp-panel2: #f3f7f5;
-  --lp-line: #d2dcd7;
-  --lp-line2: #aebdb6;
-  --lp-txt: #0c1a16;
-  --lp-muted: #41564c;
-  --lp-muted2: #566c62;
-  --lp-green: #076b41;
-  --lp-greend: #05502f;
+  --lp-panel2: #f0f3f1;
+  --lp-line: #c2cbc6;
+  --lp-line2: #8f9b94;
+  --lp-txt: #0a100e;
+  --lp-muted: #24302b;
+  --lp-muted2: #334039;
+  --lp-green: #376249;
+  --lp-greend: #254131;
   --lp-gold: #7d5a05;
   --lp-teal: #076358;
   --lp-blue: #1d5b83;
@@ -72,6 +84,11 @@
   --lp-violet: #4f3d9c;
   /* Encre posée SUR un aplat d'accent : les accents sont foncés ici. */
   --lp-encre: #ffffff;
+  --lp-nav: #1c352e;
+  --lp-nav2: #25423a;
+  --lp-nav-line: #3c5349;
+  --lp-nav-txt: #eaf5ef;
+  --lp-nav-muted: #9bb5aa;
   color-scheme: light;
 }
 
@@ -230,10 +247,7 @@
 }
 
 .lp-topbar {
-  background: linear-gradient(180deg, #102e25, #0c1a16);
-}
-[data-theme="light"] .lp-topbar {
-  background: linear-gradient(180deg, #ffffff, #eff3f1);
+  background: linear-gradient(180deg, var(--lp-panel), var(--lp-bg));
 }
 
 /* ------------------------------------------------------------------ */
