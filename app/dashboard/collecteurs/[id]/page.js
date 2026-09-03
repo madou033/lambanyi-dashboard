@@ -11,6 +11,7 @@ import {
   BandeauErreur,
   Bloc,
   Btn,
+  Champ,
   Chip,
   Modal,
   PaginationBar,
@@ -20,7 +21,18 @@ import {
   ilYA,
   nombre,
 } from '@/components/ui';
+import { useContexte } from '@/components/ContexteProvider';
+import { cheminContexte, peutEcrire } from '@/lib/contexte';
 import { supabase } from '@/lib/supabase';
+
+async function entetesApi() {
+  const { data } = await supabase.auth.getSession();
+  const headers = { 'Content-Type': 'application/json' };
+  if (data.session?.access_token) {
+    headers.Authorization = `Bearer ${data.session.access_token}`;
+  }
+  return { headers, token: data.session?.access_token || '' };
+}
 
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
@@ -56,8 +68,14 @@ function relation(objet) {
 
 export default function CollecteurPage() {
   const { id } = useParams();
+  const { ctx } = useContexte();
+  const peutModifier = peutEcrire(ctx);
+  const peutResetMdp = ctx?.niveau === 'commune' && peutModifier;
+  const hrefListe = cheminContexte('/dashboard/collecteurs', ctx);
+
   const [activite, setActivite] = useState(null);
   const [profil, setProfil] = useState(null);
+  const [email, setEmail] = useState(null);
   const [tournees, setTournees] = useState([]);
   const [passages, setPassages] = useState([]);
   const [depots, setDepots] = useState([]);
@@ -70,49 +88,67 @@ export default function CollecteurPage() {
   const [bascule, setBascule] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
   const [tourneeEnCours, setTourneeEnCours] = useState(null);
+  const [modaleMdp, setModaleMdp] = useState(false);
+  const [motDePasse, setMotDePasse] = useState('');
+  const [confirmationMdp, setConfirmationMdp] = useState('');
+  const [messageMdp, setMessageMdp] = useState(null);
+  const [enregistrementMdp, setEnregistrementMdp] = useState(false);
 
   const charger = useCallback(
     async function () {
       setChargement(true);
       const il30j = new Date(Date.now() - 30 * 86_400_000).toISOString();
-      const [activiteReponse, profilAvecPme, tourneesReponse, passagesReponse, depotsReponse, colleguesReponse] =
-        await Promise.all([
-          supabase.from('collecteurs_activite').select('*').eq('id', id).maybeSingle(),
-          supabase
-            .from('profils')
-            .select('id, nom_complet, telephone, actif, created_at, pme_id, pme(nom)')
-            .eq('id', id)
-            .maybeSingle(),
-          supabase
-            .from('tournees')
-            .select(
-              'id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom)',
-            )
-            .eq('collecteur_id', id)
-            .order('jour_semaine')
-            .order('heure_debut'),
-          supabase
-            .from('passages')
-            .select(
-              'id, statut, created_at, menage_id, menages(code_menage, point_repere, quartiers(nom))',
-            )
-            .eq('collecteur_id', id)
-            .gte('created_at', il30j)
-            .order('created_at', { ascending: false })
-            .limit(500),
-          supabase
-            .from('depots')
-            .select('id, created_at, nb_charrettes, note, points_depot(nom)')
-            .eq('collecteur_id', id)
-            .gte('created_at', il30j)
-            .order('created_at', { ascending: false })
-            .limit(500),
-          supabase
-            .from('profils')
-            .select('id, nom_complet, actif')
-            .eq('role', 'collecteur')
-            .order('nom_complet'),
-        ]);
+      const { headers } = await entetesApi();
+      const [
+        activiteReponse,
+        profilAvecPme,
+        tourneesReponse,
+        passagesReponse,
+        depotsReponse,
+        colleguesReponse,
+        identiteReponse,
+      ] = await Promise.all([
+        supabase.from('collecteurs_activite').select('*').eq('id', id).maybeSingle(),
+        supabase
+          .from('profils')
+          .select('id, nom_complet, telephone, actif, created_at, pme_id, pme(nom)')
+          .eq('id', id)
+          .maybeSingle(),
+        supabase
+          .from('tournees')
+          .select(
+            'id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom)',
+          )
+          .eq('collecteur_id', id)
+          .order('jour_semaine')
+          .order('heure_debut'),
+        supabase
+          .from('passages')
+          .select(
+            'id, statut, created_at, menage_id, menages(code_menage, point_repere, quartiers(nom))',
+          )
+          .eq('collecteur_id', id)
+          .gte('created_at', il30j)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('depots')
+          .select('id, created_at, nb_charrettes, note, points_depot(nom)')
+          .eq('collecteur_id', id)
+          .gte('created_at', il30j)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('profils')
+          .select('id, nom_complet, actif')
+          .eq('role', 'collecteur')
+          .order('nom_complet'),
+        fetch(`/api/collecteurs/${id}`, { headers }).then(function (r) {
+          return r.json().then(function (j) {
+            return { ok: r.ok, ...j };
+          });
+        }),
+      ]);
 
       let profilReponse = profilAvecPme;
       if (profilAvecPme.error) {
@@ -137,6 +173,7 @@ export default function CollecteurPage() {
       setInstant(Date.now());
       setActivite(activiteReponse.data || null);
       setProfil(profilReponse.data || null);
+      setEmail(identiteReponse.ok ? identiteReponse.email || null : null);
       setTournees(tourneesReponse.data || []);
       setPassages(passagesReponse.data || []);
       setDepots(depotsReponse.data || []);
@@ -157,10 +194,14 @@ export default function CollecteurPage() {
         passagesReponse.error ||
         depotsReponse.error ||
         colleguesReponse.error;
+      const erreurEmail =
+        !identiteReponse.ok && identiteReponse.erreur
+          ? `Email indisponible : ${identiteReponse.erreur}`
+          : null;
       setErreur(
         erreurSecondaire
           ? `Certaines informations n’ont pas pu être chargées : ${erreurSecondaire.message}`
-          : null,
+          : erreurEmail,
       );
 
       const nom = profilReponse.data?.nom_complet || activiteReponse.data?.nom_complet;
@@ -245,6 +286,7 @@ export default function CollecteurPage() {
   const paginationDepots = usePagination(depots, 10);
 
   async function confirmerBascule() {
+    if (!peutModifier) return;
     setEnregistrement(true);
     const { error } = await supabase
       .from('profils')
@@ -260,6 +302,7 @@ export default function CollecteurPage() {
   }
 
   async function reaffecter(tourneeId, collecteurId) {
+    if (!peutModifier) return;
     setTourneeEnCours(tourneeId);
     const { error } = await supabase
       .from('tournees')
@@ -273,16 +316,52 @@ export default function CollecteurPage() {
     charger();
   }
 
+  async function reinitialiserMotDePasse() {
+    setMessageMdp(null);
+    if (motDePasse.length < 6) {
+      setMessageMdp('Le mot de passe doit faire au moins 6 caractères.');
+      return;
+    }
+    if (motDePasse !== confirmationMdp) {
+      setMessageMdp('Les deux saisies ne correspondent pas.');
+      return;
+    }
+    setEnregistrementMdp(true);
+    try {
+      const { headers, token } = await entetesApi();
+      const reponse = await fetch(`/api/collecteurs/${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ motDePasse, tokenAppelant: token }),
+      });
+      const resultat = await reponse.json().catch(function () {
+        return {};
+      });
+      setEnregistrementMdp(false);
+      if (!reponse.ok) {
+        setMessageMdp(resultat.erreur || 'La réinitialisation a échoué.');
+        return;
+      }
+      setModaleMdp(false);
+      setMotDePasse('');
+      setConfirmationMdp('');
+      setErreur(null);
+    } catch (e) {
+      setEnregistrementMdp(false);
+      setMessageMdp(e.message || 'La réinitialisation a échoué.');
+    }
+  }
+
   if (!chargement && !activite && !profil) {
     return (
       <div className="w-full">
         <BandeauFiche
           kicker="Terrain · Collecteur"
           titre="Collecteur introuvable"
-          hrefRetour="/dashboard/collecteurs"
+          hrefRetour={hrefListe}
           meta={{
             fil: [
-              { href: '/dashboard/collecteurs', label: 'Collecteurs' },
+              { href: hrefListe, label: 'Collecteurs' },
               { label: 'Introuvable' },
             ],
           }}
@@ -291,7 +370,7 @@ export default function CollecteurPage() {
         <p className="mt-8 text-[13.5px] text-muted">
           Ce collecteur est introuvable ou n’est plus accessible.{' '}
           <Link
-            href="/dashboard/collecteurs"
+            href={hrefListe}
             className="cursor-pointer rounded-sm font-semibold text-txt outline-none hover:text-teal focus-visible:ring-2 focus-visible:ring-blue"
           >
             Retour à la liste des collecteurs
@@ -307,7 +386,7 @@ export default function CollecteurPage() {
       <BandeauFiche
         kicker="Terrain · Collecteur"
         titre={chargement ? 'Chargement…' : nom}
-        hrefRetour="/dashboard/collecteurs"
+        hrefRetour={hrefListe}
         badges={
           chargement ? null : fiche?.actif ? (
             dormant ? (
@@ -321,12 +400,13 @@ export default function CollecteurPage() {
         }
         meta={{
           fil: [
-            { href: '/dashboard/collecteurs', label: 'Collecteurs' },
+            { href: hrefListe, label: 'Collecteurs' },
             { label: chargement ? 'Chargement…' : nom },
           ],
           ligne: chargement
             ? 'Chargement des informations…'
             : [
+                email || 'Sans email',
                 telephone || 'Sans téléphone',
                 quartiers || 'Aucune tournée',
                 dernier ? `Dernier pointage ${ilYA(dernier)}` : 'Jamais pointé',
@@ -343,14 +423,29 @@ export default function CollecteurPage() {
                   Appeler
                 </a>
               ) : null}
-              <Btn
-                variant={fiche.actif ? 'red' : 'green'}
-                onClick={function () {
-                  setBascule(true);
-                }}
-              >
-                {fiche.actif ? 'Désactiver' : 'Réactiver'}
-              </Btn>
+              {peutResetMdp ? (
+                <Btn
+                  variant="ghost"
+                  onClick={function () {
+                    setMessageMdp(null);
+                    setMotDePasse('');
+                    setConfirmationMdp('');
+                    setModaleMdp(true);
+                  }}
+                >
+                  Réinitialiser le mot de passe
+                </Btn>
+              ) : null}
+              {peutModifier ? (
+                <Btn
+                  variant={fiche.actif ? 'red' : 'green'}
+                  onClick={function () {
+                    setBascule(true);
+                  }}
+                >
+                  {fiche.actif ? 'Désactiver' : 'Réactiver'}
+                </Btn>
+              ) : null}
             </>
           )
         }
@@ -572,6 +667,19 @@ export default function CollecteurPage() {
         <aside className="flex flex-col gap-9 xl:col-span-4">
           <Panel titre="Identité">
             <dl className="m-0">
+              <LigneMeta label="Nom">{nom}</LigneMeta>
+              <LigneMeta label="Email">
+                {email ? (
+                  <a
+                    href={`mailto:${email}`}
+                    className="cursor-pointer rounded-sm font-mono text-[12.5px] text-txt outline-none hover:text-teal focus-visible:ring-2 focus-visible:ring-blue"
+                  >
+                    {email}
+                  </a>
+                ) : (
+                  <span className="text-muted2">Non disponible</span>
+                )}
+              </LigneMeta>
               <LigneMeta label="Téléphone">
                 {telephone ? (
                   <span className="font-mono tabular-nums">{telephone}</span>
@@ -580,6 +688,20 @@ export default function CollecteurPage() {
                 )}
               </LigneMeta>
               <LigneMeta label="PME">{relation(profil?.pme)?.nom || 'Commune'}</LigneMeta>
+              <LigneMeta label="Quartiers">{quartiers || '—'}</LigneMeta>
+              <LigneMeta label="Statut">
+                {!fiche ? (
+                  '—'
+                ) : fiche.actif ? (
+                  dormant ? (
+                    <Badge ton="or">Inactif 7 j</Badge>
+                  ) : (
+                    <Badge ton="teal">En service</Badge>
+                  )
+                ) : (
+                  <Badge ton="muted">Désactivé</Badge>
+                )}
+              </LigneMeta>
               <LigneMeta label="Inscrit le">
                 {profil?.created_at ? (
                   <span className="font-mono tabular-nums">
@@ -592,45 +714,68 @@ export default function CollecteurPage() {
             </dl>
           </Panel>
 
-          <Panel titre="Actions">
-            {tournees.length === 0 ? (
-              <p className="m-0 text-[12.5px] text-muted2">Aucune tournée à réaffecter.</p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {tournees.map(function (tournee) {
-                  return (
-                    <div key={tournee.id} className="border-b border-line pb-4 last:border-b-0 last:pb-0">
-                      <p className="mt-0 mb-2 text-[12px] text-muted">
-                        <b className="text-txt">
-                          {relation(tournee.quartiers)?.nom || 'Sans quartier'}
-                        </b>{' '}
-                        · {JOURS[Number(tournee.jour_semaine) - 1] || 'Jour inconnu'}
-                      </p>
-                      <Selecteur
-                        value={tournee.collecteur_id || ''}
-                        disabled={tourneeEnCours === tournee.id}
-                        aria-label={`Réaffecter la tournée ${relation(tournee.quartiers)?.nom || ''}`}
-                        className="w-full"
-                        onChange={function (e) {
-                          reaffecter(tournee.id, e.target.value);
-                        }}
-                      >
-                        <option value="">— Non affectée —</option>
-                        {collegues.map(function (collegue) {
-                          return (
-                            <option key={collegue.id} value={collegue.id}>
-                              {collegue.nom_complet}
-                              {!collegue.actif ? ' (désactivé)' : ''}
-                            </option>
-                          );
-                        })}
-                      </Selecteur>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Panel>
+          {peutModifier ? (
+            <Panel titre="Tournées — réaffectation">
+              {tournees.length === 0 ? (
+                <p className="m-0 text-[12.5px] text-muted2">Aucune tournée à réaffecter.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {tournees.map(function (tournee) {
+                    return (
+                      <div key={tournee.id} className="border-b border-line pb-4 last:border-b-0 last:pb-0">
+                        <p className="mt-0 mb-2 text-[12px] text-muted">
+                          <b className="text-txt">
+                            {relation(tournee.quartiers)?.nom || 'Sans quartier'}
+                          </b>{' '}
+                          · {JOURS[Number(tournee.jour_semaine) - 1] || 'Jour inconnu'}
+                        </p>
+                        <Selecteur
+                          value={tournee.collecteur_id || ''}
+                          disabled={tourneeEnCours === tournee.id}
+                          aria-label={`Réaffecter la tournée ${relation(tournee.quartiers)?.nom || ''}`}
+                          className="w-full"
+                          onChange={function (e) {
+                            reaffecter(tournee.id, e.target.value);
+                          }}
+                        >
+                          <option value="">— Non affectée —</option>
+                          {collegues.map(function (collegue) {
+                            return (
+                              <option key={collegue.id} value={collegue.id}>
+                                {collegue.nom_complet}
+                                {!collegue.actif ? ' (désactivé)' : ''}
+                              </option>
+                            );
+                          })}
+                        </Selecteur>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+          ) : null}
+
+          {peutResetMdp ? (
+            <Panel titre="Accès">
+              <p className="mt-0 mb-3 text-[12.5px] leading-relaxed text-muted">
+                En cas d’oubli, définissez un nouveau mot de passe et communiquez-le au
+                collecteur (il sert à se connecter à l’app de terrain).
+              </p>
+              <Btn
+                variant="ghost"
+                className="w-full"
+                onClick={function () {
+                  setMessageMdp(null);
+                  setMotDePasse('');
+                  setConfirmationMdp('');
+                  setModaleMdp(true);
+                }}
+              >
+                Réinitialiser le mot de passe
+              </Btn>
+            </Panel>
+          ) : null}
 
           <Panel titre="Lié">
             <p className="m-0 text-[12.5px] text-txt">
@@ -683,6 +828,75 @@ export default function CollecteurPage() {
             </>
           )}
         </p>
+      </Modal>
+
+      <Modal
+        ouvert={modaleMdp}
+        onFermer={function () {
+          if (!enregistrementMdp) setModaleMdp(false);
+        }}
+        titre="Réinitialiser le mot de passe"
+        sousTitre={email ? `Compte ${email}` : nom}
+        taille="sm"
+        bloquerFermeture={enregistrementMdp}
+        pied={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Btn
+              variant="ghost"
+              disabled={enregistrementMdp}
+              onClick={function () {
+                setModaleMdp(false);
+              }}
+            >
+              Annuler
+            </Btn>
+            <Btn
+              variant="green"
+              disabled={enregistrementMdp}
+              onClick={reinitialiserMotDePasse}
+            >
+              {enregistrementMdp ? 'Enregistrement…' : 'Enregistrer'}
+            </Btn>
+          </div>
+        }
+      >
+        <div className="grid gap-4">
+          <p className="m-0 text-[13px] leading-relaxed text-muted">
+            Le mot de passe actuel sera remplacé immédiatement. Communiquez le nouveau
+            au collecteur par un canal sûr.
+          </p>
+          {messageMdp ? (
+            <p className="m-0 rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-[12.5px] text-red">
+              {messageMdp}
+            </p>
+          ) : null}
+          <label>
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Nouveau mot de passe *
+            </span>
+            <Champ
+              type="password"
+              autoComplete="new-password"
+              value={motDePasse}
+              onChange={function (e) {
+                setMotDePasse(e.target.value);
+              }}
+            />
+          </label>
+          <label>
+            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
+              Confirmation *
+            </span>
+            <Champ
+              type="password"
+              autoComplete="new-password"
+              value={confirmationMdp}
+              onChange={function (e) {
+                setConfirmationMdp(e.target.value);
+              }}
+            />
+          </label>
+        </div>
       </Modal>
     </div>
   );
