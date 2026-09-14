@@ -16,7 +16,7 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata = {
-  title: 'Lambanyi Propre · Pilotage Conakry',
+  title: 'Conakry Propre · Pilotage',
   description: "Pilotage de l'assainissement et de la collecte des déchets de Conakry.",
 };
 

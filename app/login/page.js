@@ -77,7 +77,7 @@ export default function LoginPage() {
             <IconMarque className="size-[18px]" />
           </div>
           <div>
-            <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Lambanyi Propre</p>
+            <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Conakry Propre</p>
             <span className="mt-0.5 block text-[9px] tracking-[1.8px] text-muted uppercase">
               Assainissement · Conakry
             </span>
@@ -120,7 +120,7 @@ export default function LoginPage() {
             <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-green text-encre">
               <IconMarque className="size-[18px]" />
             </div>
-            <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Lambanyi Propre</p>
+            <p className="m-0 text-[13.5px] font-bold tracking-wide text-txt">Conakry Propre</p>
           </div>
 
           <div className="text-[10px] tracking-[2.5px] text-muted2 uppercase">Accès personnel</div>

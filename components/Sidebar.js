@@ -279,7 +279,7 @@ function Panneau({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13.5px] font-bold tracking-wide text-nav-txt">
-            Lambanyi Propre
+            Conakry Propre
           </span>
           <span className="mt-0.5 block truncate text-[9px] tracking-[1.8px] text-nav-muted uppercase">
             {ctx?.niveau === 'region'

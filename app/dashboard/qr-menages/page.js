@@ -252,7 +252,7 @@ export default function QrMenagesPage() {
                 </div>
                 <div className="mt-1 line-clamp-2 text-[11px] text-muted">{m.point_repere}</div>
                 <div className="mt-1.5 text-[9px] tracking-[1.4px] text-muted2 uppercase">
-                  Lambanyi Propre
+                  Conakry Propre
                 </div>
               </article>
             );
