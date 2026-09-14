@@ -30,6 +30,7 @@ import {
   vuePilotageAbsente,
 } from '@/lib/signalements';
 import { supabase } from '@/lib/supabase';
+import { Rapprochement } from './Rapprochement';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 
@@ -362,6 +363,15 @@ export default function SignalementPage() {
               </div>
             )}
           </Bloc>
+
+          {!chargement ? (
+            <Rapprochement
+              signalement={signalement}
+              ouvert={ouvert}
+              enCours={enCours}
+              onDecider={poserEvenement}
+            />
+          ) : null}
 
           <Bloc titre="Localisation">
             {chargement ? (

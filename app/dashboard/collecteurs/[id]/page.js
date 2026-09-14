@@ -18,6 +18,7 @@ import {
   Panel,
   Selecteur,
   couleurTon,
+  heure,
   ilYA,
   nombre,
 } from '@/components/ui';
@@ -36,6 +37,12 @@ async function entetesApi() {
 
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
+const MOTIFS_PASSAGE = {
+  bac_non_sorti: 'Bac non sorti',
+  acces_ferme: 'Accès fermé',
+  rue_bloquee: 'Rue bloquée',
+  autre: 'Autre motif',
+};
 const STATUTS_PASSAGE = {
   effectue: { label: 'Effectué', ton: 'teal' },
   absent: { label: 'Absent', ton: 'or' },
@@ -122,14 +129,16 @@ export default function CollecteurPage() {
           .eq('collecteur_id', id)
           .order('jour_semaine')
           .order('heure_debut'),
+        // passages_detail porte le motif, l'ecart GPS au domicile et le
+        // seuil communal : c'est la que se lit la preuve de presence.
         supabase
-          .from('passages')
+          .from('passages_detail')
           .select(
-            'id, statut, created_at, menage_id, menages(code_menage, point_repere, quartiers(nom))',
+            'id, statut, motif, pointe_a, created_at, corrige_a, ecart_m, hors_seuil, sans_position, hors_abonnement, menage_id, code_menage, point_repere, quartier',
           )
           .eq('collecteur_id', id)
-          .gte('created_at', il30j)
-          .order('created_at', { ascending: false })
+          .gte('pointe_a', il30j)
+          .order('pointe_a', { ascending: false })
           .limit(500),
         supabase
           .from('depots')
@@ -221,7 +230,7 @@ export default function CollecteurPage() {
   const fiche = profil || activite;
   const nom = profil?.nom_complet || activite?.nom_complet || 'Collecteur';
   const telephone = profil?.telephone || activite?.telephone || '';
-  const dernier = activite?.dernier_passage || passages[0]?.created_at;
+  const dernier = activite?.dernier_passage || passages[0]?.pointe_a;
   const seuil7j = instant - 7 * 86_400_000;
   const dormant =
     Boolean(fiche?.actif) && (!dernier || new Date(dernier).getTime() < seuil7j);
@@ -241,7 +250,7 @@ export default function CollecteurPage() {
       return instant
         ? passagesParJour(
             passages.map(function (passage) {
-              return passage.created_at;
+              return passage.pointe_a;
             }),
             7,
             instant,
@@ -268,7 +277,7 @@ export default function CollecteurPage() {
       const jours = Number(periode);
       const seuil = instant - jours * 86_400_000;
       return passages.filter(function (passage) {
-        return new Date(passage.created_at).getTime() >= seuil;
+        return new Date(passage.pointe_a).getTime() >= seuil;
       });
     },
     [instant, passages, periode],
@@ -458,10 +467,10 @@ export default function CollecteurPage() {
           <BandeauMetriques
             metriques={[
               {
-                label: 'Passages 7 jours',
-                valeur: chargement ? '—' : nombre(activite?.nb_passages_semaine ?? valeurs7j.reduce((a, b) => a + b, 0)),
-                sous: 'Pointages récents',
-                ton: 'teal',
+                label: 'Collectés 7 jours',
+                valeur: chargement ? '—' : nombre(activite?.nb_collectes_semaine ?? 0),
+                sous: `${nombre(activite?.nb_passages_semaine ?? valeurs7j.reduce((a, b) => a + b, 0))} pointage${(activite?.nb_passages_semaine ?? 0) > 1 ? 's' : ''} · ${nombre(activite?.nb_hors_seuil_semaine ?? 0)} hors seuil`,
+                ton: (activite?.nb_hors_seuil_semaine ?? 0) > 0 ? 'or' : 'teal',
               },
               {
                 label: 'Dépôts 7 jours',
@@ -595,29 +604,32 @@ export default function CollecteurPage() {
             }
           >
             {paginationPassages.tranche.map(function (passage, rang) {
-              const menage = relation(passage.menages);
-              const quartier = relation(menage?.quartiers)?.nom;
               const statut = STATUTS_PASSAGE[passage.statut] || {
                 label: passage.statut || 'Sans statut',
                 ton: 'muted',
               };
+              const preuve = passage.sans_position
+                ? 'sans position'
+                : passage.ecart_m != null
+                  ? `à ${nombre(passage.ecart_m)} m du foyer`
+                  : null;
               return (
                 <LigneJournal
                   key={passage.id}
                   href={`/dashboard/menages/${passage.menage_id}`}
-                  rail={couleurTon(statut.ton)}
+                  rail={couleurTon(passage.hors_seuil ? 'or' : statut.ton)}
                   titre={
                     <span className="flex flex-wrap items-center gap-2">
-                      {menage?.code_menage ? (
-                        <span className="font-mono tabular-nums">{menage.code_menage}</span>
-                      ) : (
-                        <span>Ménage</span>
-                      )}
+                      <span className="font-mono tabular-nums">{passage.code_menage || 'Ménage'}</span>
                       <Badge ton={statut.ton}>{statut.label}</Badge>
+                      {passage.motif ? <span className="text-[12px] text-muted">{MOTIFS_PASSAGE[passage.motif] || passage.motif}</span> : null}
+                      {passage.hors_seuil ? <Badge ton="or">Hors seuil</Badge> : null}
+                      {passage.hors_abonnement ? <Badge ton="muted">Sans abonnement</Badge> : null}
+                      {passage.corrige_a ? <Badge ton="bleu">Corrigé</Badge> : null}
                     </span>
                   }
-                  sous={[menage?.point_repere, quartier].filter(Boolean).join(' · ') || 'Sans précision'}
-                  droite={ilYA(passage.created_at)}
+                  sous={[passage.point_repere, passage.quartier, preuve].filter(Boolean).join(' · ') || 'Sans précision'}
+                  droite={`${heure(passage.pointe_a)} · ${ilYA(passage.pointe_a)}`}
                   rang={rang}
                 />
               );

@@ -20,6 +20,7 @@ import {
   Panel,
   Selecteur,
   couleurTon,
+  heure,
   ilYA,
   montant,
   nombre,
@@ -50,6 +51,13 @@ const FILTRES_PASSAGE = [
   { code: 'absent', label: 'Absents' },
   { code: 'inaccessible', label: 'Inaccessibles' },
 ];
+
+const MOTIFS_PASSAGE = {
+  bac_non_sorti: 'Bac non sorti',
+  acces_ferme: 'Accès fermé',
+  rue_bloquee: 'Rue bloquée',
+  autre: 'Autre motif',
+};
 
 const STATUTS_PASSAGE = {
   effectue: { label: 'Effectué', ton: 'teal' },
@@ -84,6 +92,7 @@ export default function MenagePage() {
   const [abonnements, setAbonnements] = useState([]);
   const [paiements, setPaiements] = useState([]);
   const [passages, setPassages] = useState([]);
+  const [tourneesPrevues, setTourneesPrevues] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
   const [instant, setInstant] = useState(0);
@@ -190,13 +199,27 @@ export default function MenagePage() {
               .limit(200)
           : Promise.resolve({ data: [], error: null }),
         supabase
-          .from('passages')
-          .select('id, statut, created_at, collecteur_id, profils(nom_complet)')
+          .from('passages_detail')
+          .select('id, statut, motif, pointe_a, jour_local, created_at, corrige_a, ecart_m, hors_seuil, sans_position, collecteur_id, collecteur, tournee_id, quartier_id')
           .eq('menage_id', id)
-          .gte('created_at', il30j)
-          .order('created_at', { ascending: false })
+          .gte('pointe_a', il30j)
+          .order('pointe_a', { ascending: false })
           .limit(500),
       ]);
+
+      // Le service du : les tournees de son quartier qui sont parties sur
+      // 30 jours. Le rapport passages effectues / tournees parties est le
+      // taux de service du foyer -- l'argument objectif d'un litige.
+      const quartierId = foyerReponse.data?.quartier_id;
+      const prevuesReponse = quartierId
+        ? await supabase
+            .from('tournees_realisation')
+            .select('occurrence_id, tournee_id, jour, statut')
+            .eq('quartier_id', quartierId)
+            .gte('jour', il30j.slice(0, 10))
+            .in('statut', ['en_cours', 'terminee', 'non_faite'])
+        : { data: [], error: null };
+      setTourneesPrevues(prevuesReponse.data || []);
 
       let abonnementsReponse = abonnementsImbriques;
       if (abonnementsImbriques.error) {
@@ -270,7 +293,17 @@ export default function MenagePage() {
       return abonnement.id === solde?.abonnement_id;
     }) || abonnements[0];
   const planActuel = relation(abonnementActuel?.plans_tarifaires);
-  const dernierPassage = passages[0]?.created_at;
+  const dernierPassage = passages[0]?.pointe_a;
+  // Un foyer est servi quand une tournee partie l'a collecte : on ne compte
+  // que les passages effectues un jour ou sa tournee a une occurrence.
+  const collectes30j = passages.filter(function (p) {
+    return p.statut === 'effectue' && tourneesPrevues.some(function (o) {
+      return o.tournee_id === p.tournee_id && o.jour === p.jour_local;
+    });
+  }).length;
+  const tauxService = tourneesPrevues.length
+    ? Math.min(100, Math.round((collectes30j / tourneesPrevues.length) * 100))
+    : null;
   const paiementsFiltres = useMemo(
     function () {
       return paiements.filter(function (paiement) {
@@ -284,7 +317,7 @@ export default function MenagePage() {
     function () {
       return passages.filter(function (passage) {
         if (filtrePassage !== 'tous' && passage.statut !== filtrePassage) return false;
-        return dansPeriode(passage.created_at, periodePassage, instant);
+        return dansPeriode(passage.pointe_a, periodePassage, instant);
       });
     },
     [filtrePassage, instant, passages, periodePassage],
@@ -438,9 +471,12 @@ export default function MenagePage() {
                 ton: Number(solde?.mois_dus) > 0 ? 'or' : 'defaut',
               },
               {
-                label: 'Passages 30 jours',
-                valeur: chargement ? '—' : nombre(passages.length),
-                sous: 'Collectes enregistrées',
+                label: 'Service 30 jours',
+                valeur: chargement ? '—' : tauxService == null ? `${nombre(collectes30j)}` : `${tauxService} %`,
+                sous: tauxService == null
+                  ? `${nombre(passages.length)} pointage${passages.length > 1 ? 's' : ''} · aucune tournée partie`
+                  : `${nombre(collectes30j)} collecté${collectes30j > 1 ? 's' : ''} sur ${nombre(tourneesPrevues.length)} tournée${tourneesPrevues.length > 1 ? 's' : ''} parties`,
+                ton: tauxService == null ? 'defaut' : tauxService >= 90 ? 'teal' : tauxService >= 60 ? 'or' : 'rouge',
               },
               {
                 label: 'Dernier passage',
@@ -610,19 +646,27 @@ export default function MenagePage() {
                 label: passage.statut || 'Sans statut',
                 ton: 'muted',
               };
-              const collecteur =
-                relation(passage.profils)?.nom_complet || 'Collecteur non renseigné';
+              const collecteur = passage.collecteur || 'Collecteur non renseigné';
+              const preuve = passage.sans_position
+                ? 'sans position'
+                : passage.ecart_m != null
+                  ? `à ${nombre(passage.ecart_m)} m du foyer`
+                  : null;
               return (
                 <LigneJournal
                   key={passage.id}
-                  rail={couleurTon(definition.ton)}
+                  rail={couleurTon(passage.hors_seuil ? 'or' : definition.ton)}
                   titre={
                     <span className="flex flex-wrap items-center gap-2">
                       {collecteur}
                       <Badge ton={definition.ton}>{definition.label}</Badge>
+                      {passage.motif ? <span className="text-[12px] text-muted">{MOTIFS_PASSAGE[passage.motif] || passage.motif}</span> : null}
+                      {passage.hors_seuil ? <Badge ton="or">Hors seuil</Badge> : null}
+                      {passage.corrige_a ? <Badge ton="bleu">Corrigé</Badge> : null}
                     </span>
                   }
-                  droite={dateCourte(passage.created_at)}
+                  sous={preuve}
+                  droite={`${dateCourte(passage.pointe_a)} · ${heure(passage.pointe_a)}`}
                   rang={rang}
                 />
               );

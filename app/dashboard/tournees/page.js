@@ -19,6 +19,7 @@ import { IconPlus } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
+import { Realisation } from './Realisation';
 
 /** Numérotation ISO 8601 : 1 = lundi … 7 = dimanche. */
 const JOURS = [
@@ -120,6 +121,7 @@ export default function TourneesPage() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
+  const [onglet, setOnglet] = useState('planning');
   const [voirSuspendues, setVoirSuspendues] = useState(true);
   const [filtreQuartier, setFiltreQuartier] = useState('');
   const [filtreCommune, setFiltreCommune] = useState('');
@@ -399,9 +401,28 @@ export default function TourneesPage() {
         ]}
       />
 
-      {/* Toolbar */}
+      {/* Onglets : le planning hebdomadaire, ou ce qui s'est réellement passé. */}
       <div
         className="no-print lp-rise mt-6 flex flex-wrap items-center gap-2"
+        style={{ animationDelay: '50ms' }}
+        role="tablist"
+        aria-label="Vue"
+      >
+        <Chip actif={onglet === 'planning'} role="tab" aria-selected={onglet === 'planning'} onClick={function () { setOnglet('planning'); }}>
+          Planning
+        </Chip>
+        <Chip actif={onglet === 'realisation'} role="tab" aria-selected={onglet === 'realisation'} onClick={function () { setOnglet('realisation'); }}>
+          Réalisées
+        </Chip>
+      </div>
+
+      {onglet === 'realisation' ? (
+        <Realisation ctx={ctx} tournees={tournees} collecteurs={collecteurs} quartiersAutorises={quartiersFiltres} />
+      ) : null}
+
+      {/* Toolbar */}
+      <div
+        className={cn('no-print lp-rise mt-4 flex flex-wrap items-center gap-2', onglet !== 'planning' && 'hidden')}
         style={{ animationDelay: '60ms' }}
       >
         <Chip
@@ -443,7 +464,7 @@ export default function TourneesPage() {
 
       {/* Planning */}
       <div
-        className="lp-rise mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7"
+        className={cn('lp-rise mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7', onglet !== 'planning' && 'hidden')}
         style={{ animationDelay: '100ms' }}
       >
         {JOURS.map(function (j) {
