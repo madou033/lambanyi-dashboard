@@ -93,7 +93,7 @@ export function FicheFoyer({ foyer, quartier, hrefFiche, onFermer }) {
       // être desservi par deux tournées du même quartier.
       supabase
         .from('passages_detail')
-        .select('id, statut, motif, pointe_a, jour_local, collecteur, ecart_m, hors_seuil')
+        .select('id, statut, motif, pointe_a, jour_local, collecteur, ecart_m, hors_seuil, preuve')
         .eq('menage_id', foyer.id)
         .gte('pointe_a', depuis)
         .order('pointe_a', { ascending: false })
@@ -187,6 +187,7 @@ export function FicheFoyer({ foyer, quartier, hrefFiche, onFermer }) {
                       {heure(foyer.pointe_a)}
                       {foyer.motif ? ` · ${MOTIFS[foyer.motif] || foyer.motif}` : ''}
                       {foyer.ecart_m != null ? ` · à ${nombre(foyer.ecart_m)} m` : ''}
+                      {foyer.preuve ? ` · ${foyer.preuve === 'qr' ? 'QR scanné' : 'code du foyer'}` : ''}
                     </span>
                   </span>
                 ) : (
@@ -209,6 +210,7 @@ export function FicheFoyer({ foyer, quartier, hrefFiche, onFermer }) {
                         {p.collecteur || 'Collecteur inconnu'}
                         {p.motif ? ` · ${MOTIFS[p.motif] || p.motif}` : ''}
                         {p.hors_seuil ? ' · loin du foyer' : ''}
+                        {p.preuve ? ` · ${p.preuve === 'qr' ? 'QR scanné' : 'code du foyer'}` : ''}
                       </span>
                     </li>
                   );

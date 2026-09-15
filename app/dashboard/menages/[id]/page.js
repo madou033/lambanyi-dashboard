@@ -200,7 +200,7 @@ export default function MenagePage() {
           : Promise.resolve({ data: [], error: null }),
         supabase
           .from('passages_detail')
-          .select('id, statut, motif, pointe_a, jour_local, created_at, corrige_a, ecart_m, hors_seuil, sans_position, collecteur_id, collecteur, tournee_id, quartier_id')
+          .select('id, statut, motif, pointe_a, jour_local, created_at, corrige_a, ecart_m, hors_seuil, sans_position, collecteur_id, collecteur, tournee_id, quartier_id, preuve')
           .eq('menage_id', id)
           .gte('pointe_a', il30j)
           .order('pointe_a', { ascending: false })
@@ -663,6 +663,11 @@ export default function MenagePage() {
                       {passage.motif ? <span className="text-[12px] text-muted">{MOTIFS_PASSAGE[passage.motif] || passage.motif}</span> : null}
                       {passage.hors_seuil ? <Badge ton="or">Hors seuil</Badge> : null}
                       {passage.corrige_a ? <Badge ton="bleu">Corrigé</Badge> : null}
+                      {passage.preuve ? (
+                        <span className="text-[11px] text-muted2">
+                          {passage.preuve === 'qr' ? 'QR scanné' : 'code du foyer'}
+                        </span>
+                      ) : null}
                     </span>
                   }
                   sous={preuve}
