@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
-  Badge,
   BandeauErreur,
   Btn,
   Champ,
@@ -16,7 +16,7 @@ import {
 } from '@/components/ui';
 import { BandeauMetriques } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
-import { peutEcrire } from '@/lib/contexte';
+import { cheminContexte, peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 import { Realisation } from './Realisation';
@@ -117,6 +117,7 @@ function CarteTournee({ t, rang, onOuvrir }) {
 
 export default function TourneesPage() {
   const { ctx } = useContexte();
+  const router = useRouter();
   const [tournees, setTournees] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [collecteurs, setCollecteurs] = useState([]);
@@ -130,8 +131,6 @@ export default function TourneesPage() {
 
   const [modaleCreation, setModaleCreation] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
-  const [cible, setCible] = useState(null);
-  const [affectation, setAffectation] = useState([]);
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
 
@@ -337,41 +336,9 @@ export default function TourneesPage() {
     return null;
   }
 
+  /** La carte ouvre la fiche : foyers desservis, équipe, réalisations. */
   function ouvrirDetail(t) {
-    setCible(t);
-    setAffectation(equipePlanifiee(t).map(function (c) { return c.id; }));
-    setMessageForm(null);
-  }
-
-  async function basculerActif() {
-    setEnregistrement(true);
-    const { error } = await supabase
-      .from('tournees')
-      .update({ actif: !cible.actif })
-      .eq('id', cible.id);
-    setEnregistrement(false);
-    if (error) {
-      setMessageForm(`Erreur : ${error.message}`);
-      return;
-    }
-    setCible(null);
-    charger();
-  }
-
-  async function enregistrerAffectation() {
-    setEnregistrement(true);
-    const error = await enregistrerEquipe(
-      cible.id,
-      equipePlanifiee(cible).map(function (c) { return c.id; }),
-      affectation,
-    );
-    setEnregistrement(false);
-    if (error) {
-      setMessageForm(`Erreur : ${error.message}`);
-      return;
-    }
-    setCible(null);
-    charger();
+    router.push(cheminContexte(`/dashboard/tournees/${t.id}`, ctx));
   }
 
   return (
@@ -668,72 +635,6 @@ export default function TourneesPage() {
         </div>
       </Modal> : null}
 
-      {/* Détail */}
-      {peutEcrire(ctx) ? <Modal
-        ouvert={Boolean(cible)}
-        onFermer={function () {
-          setCible(null);
-        }}
-        titre={cible?.quartiers?.nom ?? 'Tournée'}
-        sousTitre={
-          cible
-            ? `${JOURS.find(function (j) {
-                return j.valeur === cible.jour_semaine;
-              })?.label} · ${heureCourte(cible.heure_debut)}`
-            : ''
-        }
-        taille="sm"
-        bloquerFermeture={enregistrement}
-        pied={
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Btn
-              variant={cible?.actif ? 'ghost' : 'green'}
-              disabled={enregistrement}
-              onClick={basculerActif}
-            >
-              {cible?.actif ? 'Suspendre' : 'Réactiver'}
-            </Btn>
-            <Btn variant="green" disabled={enregistrement} onClick={enregistrerAffectation}>
-              {enregistrement ? 'Enregistrement…' : "Enregistrer l'équipe"}
-            </Btn>
-          </div>
-        }
-      >
-        {messageForm ? (
-          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
-            {messageForm}
-          </p>
-        ) : null}
-
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Badge ton={cible?.actif ? 'teal' : 'muted'}>
-            {cible?.actif ? 'Active' : 'Suspendue'}
-          </Badge>
-          {cible && equipePlanifiee(cible).length === 0 ? <Badge ton="rouge">Sans collecteur</Badge> : null}
-          {affectation.length ? (
-            <Badge ton="muted">
-              {affectation.length} collecteur{affectation.length > 1 ? 's' : ''}
-            </Badge>
-          ) : null}
-        </div>
-
-        <div className="block">
-          <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-            Équipe planifiée
-          </span>
-          <ListeCollecteurs
-            collecteurs={collecteurs}
-            choisis={affectation}
-            disabled={enregistrement}
-            onChange={setAffectation}
-            vide="Aucun collecteur actif pour ce quartier."
-          />
-          <span className="mt-1.5 block text-[11px] text-muted2">
-            Chaque membre voit la tournée dans son application et peut y pointer. Pour un
-            changement d&apos;un seul jour, passez par l&apos;onglet Réalisées.
-          </span>
-        </div>
-      </Modal> : null}
     </div>
   );
 }
