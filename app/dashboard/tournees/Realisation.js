@@ -13,9 +13,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Badge, Btn, Champ, Chip, Modal, Selecteur, nombre, heure } from '@/components/ui';
+import { Badge, Btn, Champ, Chip, Modal, nombre, heure } from '@/components/ui';
 import { BandeauMetriques, CarteListe, Tableau, Tr, Td } from '@/components/liste';
 import { peutEcrire } from '@/lib/contexte';
+import { ListeCollecteurs, equipePlanifiee, nomsEquipe } from './ListeCollecteurs';
 
 const OCCURRENCE = {
   planifiee: { ton: 'muted', libelle: 'Planifiée' },
@@ -58,7 +59,7 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
   const [erreur, setErreur] = useState(null);
 
   const [cible, setCible] = useState(null);         // { tournee, occurrence }
-  const [remplacant, setRemplacant] = useState('');
+  const [equipeDuJour, setEquipeDuJour] = useState([]);
   const [note, setNote] = useState('');
   const [enregistrement, setEnregistrement] = useState(false);
 
@@ -129,9 +130,15 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
     return { total, faites, nonFaites, suspendues, retardMoyen, collectes, aDesservir, horsSeuil };
   }, [historique]);
 
+  function idsPlanifies(tournee) {
+    return equipePlanifiee(tournee).map(function (c) { return c.id; });
+  }
+
   function ouvrir(ligne) {
     setCible(ligne);
-    setRemplacant(ligne.occurrence?.remplacant ? ligne.occurrence.collecteur_id : '');
+    // L'équipe du jour telle que la vue la calcule : celle du planning tant
+    // que personne ne l'a modifiée.
+    setEquipeDuJour(ligne.occurrence ? ligne.occurrence.collecteurs_ids || [] : idsPlanifies(ligne.tournee));
     setNote(ligne.occurrence?.note || '');
   }
 
@@ -141,16 +148,41 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
     const ligne = {
       tournee_id: cible.tournee.id,
       jour,
-      collecteur_id: remplacant || null,
       note: note.trim() || null,
     };
     if (statut) ligne.statut = statut;
-    const { error } = await supabase
+    const occ = await supabase
       .from('tournees_occurrences')
-      .upsert(ligne, { onConflict: 'tournee_id,jour' });
+      .upsert(ligne, { onConflict: 'tournee_id,jour' })
+      .select('id')
+      .single();
+    if (occ.error) {
+      setEnregistrement(false);
+      setErreur(`Enregistrement refusé : ${occ.error.message}`);
+      return;
+    }
+
+    // L'équipe du jour n'est écrite que si elle diffère du planning : sinon
+    // la tournée suit le planning, et une réaffectation ultérieure s'y
+    // reflète d'elle-même.
+    const planifies = idsPlanifies(cible.tournee);
+    const identique =
+      planifies.length === equipeDuJour.length
+      && planifies.every(function (id) { return equipeDuJour.includes(id); });
+    const vider = await supabase
+      .from('tournees_occurrences_collecteurs')
+      .delete()
+      .eq('occurrence_id', occ.data.id);
+    const remplir = !vider.error && !identique && equipeDuJour.length
+      ? await supabase
+          .from('tournees_occurrences_collecteurs')
+          .insert(equipeDuJour.map(function (id) { return { occurrence_id: occ.data.id, collecteur_id: id }; }))
+      : { error: null };
     setEnregistrement(false);
+    const error = vider.error || remplir.error;
     if (error) {
-      setErreur(`Enregistrement refusé : ${error.message}`);
+      setErreur(`L'équipe du jour n'a pas pu être enregistrée : ${error.message}`);
+      charger();
       return;
     }
     setCible(null);
@@ -224,8 +256,11 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
                 <Td mono>{String(tournee.heure_debut).slice(0, 5)}</Td>
                 <Td fort>{tournee.quartiers?.nom || '—'}</Td>
                 <Td>
-                  {occurrence?.collecteur || tournee.profils?.nom_complet || <span className="text-red">Sans collecteur</span>}
-                  {occurrence?.remplacant ? <Badge ton="bleu" className="ml-2">Remplaçant</Badge> : null}
+                  {occurrence
+                    ? occurrence.collecteurs || <span className="text-red">Sans collecteur</span>
+                    : nomsEquipe(equipePlanifiee(tournee).map(function (c) { return c.nom_complet; }), 3)
+                      || <span className="text-red">Sans collecteur</span>}
+                  {occurrence?.equipe_modifiee ? <Badge ton="bleu" className="ml-2">Équipe du jour</Badge> : null}
                 </Td>
                 <Td>
                   <Badge ton={def.ton}>{def.libelle}</Badge>
@@ -284,8 +319,8 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
                 <Td mono>{String(r.heure_debut).slice(0, 5)}</Td>
                 <Td fort>{r.quartier}</Td>
                 <Td>
-                  {r.collecteur || <span className="text-red">Sans collecteur</span>}
-                  {r.remplacant ? <Badge ton="bleu" className="ml-2">Remplaçant</Badge> : null}
+                  {r.collecteurs || <span className="text-red">Sans collecteur</span>}
+                  {r.equipe_modifiee ? <Badge ton="bleu" className="ml-2">Équipe du jour</Badge> : null}
                 </Td>
                 <Td><Badge ton={futur ? 'muted' : def.ton}>{futur ? 'À venir' : def.libelle}</Badge></Td>
                 <Td mono>{r.debut_at ? `${heure(r.debut_at)} · ${retardLisible(r.retard_min)}` : '—'}</Td>
@@ -322,17 +357,20 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
         }
       >
         <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">Collecteur ce jour</span>
-            <Selecteur value={remplacant} onChange={function (e) { setRemplacant(e.target.value); }}>
-              <option value="">{cible?.tournee.profils?.nom_complet ? `${cible.tournee.profils.nom_complet} (titulaire)` : 'Titulaire du planning'}</option>
-              {(collecteurs || [])
-                .filter((c) => c.id !== cible?.tournee.collecteur_id)
-                .map(function (c) {
-                  return <option key={c.id} value={c.id}>{c.nom_complet}</option>;
-                })}
-            </Selecteur>
-          </label>
+          <div className="block">
+            <span className="mb-1 block text-[12px] text-muted">Équipe ce jour</span>
+            <ListeCollecteurs
+              collecteurs={collecteurs || []}
+              choisis={equipeDuJour}
+              disabled={enregistrement}
+              onChange={setEquipeDuJour}
+              vide="Aucun collecteur disponible."
+            />
+            <span className="mt-1.5 block text-[11px] text-muted2">
+              {cible ? `Planning : ${nomsEquipe(equipePlanifiee(cible.tournee).map(function (c) { return c.nom_complet; }), 4) || 'personne'}. ` : ''}
+              Cochez un remplaçant, ajoutez un renfort, retirez un absent : seul ce jour change.
+            </span>
+          </div>
           <label className="block">
             <span className="mb-1 block text-[12px] text-muted">Note (visible par le collecteur)</span>
             <Champ

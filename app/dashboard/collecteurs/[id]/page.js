@@ -121,12 +121,14 @@ export default function CollecteurPage() {
           .select('id, nom_complet, telephone, actif, created_at, pme_id, pme(nom)')
           .eq('id', id)
           .maybeSingle(),
+        // Ses tournees : celles dont il est de l'equipe planifiee. La
+        // jointure interne filtre sur lui ; l'equipe complete se relit a part.
         supabase
           .from('tournees')
           .select(
-            'id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom)',
+            'id, jour_semaine, heure_debut, actif, quartier_id, quartiers(nom), tournees_collecteurs!inner(collecteur_id)',
           )
-          .eq('collecteur_id', id)
+          .eq('tournees_collecteurs.collecteur_id', id)
           .order('jour_semaine')
           .order('heure_debut'),
         // passages_detail porte le motif, l'ecart GPS au domicile et le
@@ -310,14 +312,25 @@ export default function CollecteurPage() {
     charger();
   }
 
+  /**
+   * Ce collecteur quitte l'equipe de la tournee ; un collegue y prend sa
+   * place si on en a choisi un. Les autres membres de l'equipe ne bougent pas.
+   */
   async function reaffecter(tourneeId, collecteurId) {
     if (!peutModifier) return;
     setTourneeEnCours(tourneeId);
-    const { error } = await supabase
-      .from('tournees')
-      .update({ collecteur_id: collecteurId || null })
-      .eq('id', tourneeId);
+    const retrait = await supabase
+      .from('tournees_collecteurs')
+      .delete()
+      .eq('tournee_id', tourneeId)
+      .eq('collecteur_id', id);
+    const ajout = !retrait.error && collecteurId
+      ? await supabase
+          .from('tournees_collecteurs')
+          .upsert({ tournee_id: tourneeId, collecteur_id: collecteurId }, { onConflict: 'tournee_id,collecteur_id' })
+      : { error: null };
     setTourneeEnCours(null);
+    const error = retrait.error || ajout.error;
     if (error) {
       setErreur(`La réaffectation a échoué : ${error.message}`);
       return;
@@ -732,6 +745,10 @@ export default function CollecteurPage() {
                 <p className="m-0 text-[12.5px] text-muted2">Aucune tournée à réaffecter.</p>
               ) : (
                 <div className="flex flex-col gap-4">
+                  <p className="m-0 text-[12px] leading-relaxed text-muted2">
+                    Le retirer d’une tournée, ou le remplacer par un collègue. Les autres
+                    membres de l’équipe restent en place.
+                  </p>
                   {tournees.map(function (tournee) {
                     return (
                       <div key={tournee.id} className="border-b border-line pb-4 last:border-b-0 last:pb-0">
@@ -742,23 +759,27 @@ export default function CollecteurPage() {
                           · {JOURS[Number(tournee.jour_semaine) - 1] || 'Jour inconnu'}
                         </p>
                         <Selecteur
-                          value={tournee.collecteur_id || ''}
+                          value={id}
                           disabled={tourneeEnCours === tournee.id}
                           aria-label={`Réaffecter la tournée ${relation(tournee.quartiers)?.nom || ''}`}
                           className="w-full"
                           onChange={function (e) {
+                            if (e.target.value === id) return;
                             reaffecter(tournee.id, e.target.value);
                           }}
                         >
-                          <option value="">— Non affectée —</option>
-                          {collegues.map(function (collegue) {
-                            return (
-                              <option key={collegue.id} value={collegue.id}>
-                                {collegue.nom_complet}
-                                {!collegue.actif ? ' (désactivé)' : ''}
-                              </option>
-                            );
-                          })}
+                          <option value={id}>{nom} (dans l’équipe)</option>
+                          <option value="">— Retirer de la tournée —</option>
+                          {collegues
+                            .filter(function (collegue) { return collegue.id !== id; })
+                            .map(function (collegue) {
+                              return (
+                                <option key={collegue.id} value={collegue.id}>
+                                  Remplacer par {collegue.nom_complet}
+                                  {!collegue.actif ? ' (désactivé)' : ''}
+                                </option>
+                              );
+                            })}
                         </Selecteur>
                       </div>
                     );

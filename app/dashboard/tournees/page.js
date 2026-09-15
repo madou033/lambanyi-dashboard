@@ -20,6 +20,7 @@ import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 import { Realisation } from './Realisation';
+import { ListeCollecteurs, equipePlanifiee, nomsEquipe } from './ListeCollecteurs';
 
 /** Numérotation ISO 8601 : 1 = lundi … 7 = dimanche. */
 const JOURS = [
@@ -34,7 +35,7 @@ const JOURS = [
 
 const FORM_VIDE = {
   quartier_id: '',
-  collecteur_id: '',
+  collecteurs: [],
   jour_semaine: '1',
   heure_debut: '07:00',
 };
@@ -54,7 +55,8 @@ function jourCourant() {
 /* ------------------------------------------------------------------ */
 
 function CarteTournee({ t, rang, onOuvrir }) {
-  const affectee = Boolean(t.profils);
+  const equipe = equipePlanifiee(t);
+  const affectee = equipe.length > 0;
   return (
     <button
       type="button"
@@ -103,7 +105,7 @@ function CarteTournee({ t, rang, onOuvrir }) {
           affectee ? 'text-muted' : 'font-semibold text-gold',
         )}
       >
-        {affectee ? t.profils.nom_complet : 'Non affectée'}
+        {affectee ? nomsEquipe(equipe.map(function (c) { return c.nom_complet; })) : 'Non affectée'}
       </div>
     </button>
   );
@@ -129,7 +131,7 @@ export default function TourneesPage() {
   const [modaleCreation, setModaleCreation] = useState(false);
   const [form, setForm] = useState(FORM_VIDE);
   const [cible, setCible] = useState(null);
-  const [affectation, setAffectation] = useState('');
+  const [affectation, setAffectation] = useState([]);
   const [enregistrement, setEnregistrement] = useState(false);
   const [messageForm, setMessageForm] = useState(null);
 
@@ -149,7 +151,7 @@ export default function TourneesPage() {
         ? Promise.resolve({ data: [], error: null })
         : supabase
             .from('tournees')
-            .select('id, jour_semaine, heure_debut, actif, quartier_id, collecteur_id, quartiers(nom), profils(nom_complet)')
+            .select('id, jour_semaine, heure_debut, actif, quartier_id, quartiers(nom), tournees_collecteurs(collecteur_id, profils(nom_complet))')
             .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
             .order('jour_semaine')
             .order('heure_debut'),
@@ -249,7 +251,7 @@ export default function TourneesPage() {
     return t.actif;
   });
   const nonAffectees = actives.filter(function (t) {
-    return !t.collecteur_id;
+    return equipePlanifiee(t).length === 0;
   }).length;
   const quartiersCouverts = new Set(
     actives.map(function (t) {
@@ -294,21 +296,50 @@ export default function TourneesPage() {
       jour_semaine: parseInt(form.jour_semaine, 10),
       heure_debut: form.heure_debut,
     };
-    if (form.collecteur_id) ligne.collecteur_id = form.collecteur_id;
 
-    const { error } = await supabase.from('tournees').insert(ligne);
-    setEnregistrement(false);
+    const { data, error } = await supabase.from('tournees').insert(ligne).select('id').single();
     if (error) {
+      setEnregistrement(false);
       setMessageForm(`Erreur : ${error.message}`);
+      return;
+    }
+    // L'équipe planifiée, dans la foulée. Une tournée créée sans équipe
+    // reste visible « non affectée » : rien n'est perdu.
+    const erreurEquipe = await enregistrerEquipe(data.id, [], form.collecteurs);
+    setEnregistrement(false);
+    if (erreurEquipe) {
+      setMessageForm(`Tournée créée, mais l'équipe n'a pas pu être enregistrée : ${erreurEquipe.message}`);
+      charger();
       return;
     }
     setModaleCreation(false);
     charger();
   }
 
+  /** Aligne l'équipe planifiée sur `apres` : on retire ce qui part, on ajoute ce qui arrive. */
+  async function enregistrerEquipe(tourneeId, avant, apres) {
+    const retires = avant.filter(function (id) { return !apres.includes(id); });
+    const ajoutes = apres.filter(function (id) { return !avant.includes(id); });
+    if (retires.length) {
+      const { error } = await supabase
+        .from('tournees_collecteurs')
+        .delete()
+        .eq('tournee_id', tourneeId)
+        .in('collecteur_id', retires);
+      if (error) return error;
+    }
+    if (ajoutes.length) {
+      const { error } = await supabase
+        .from('tournees_collecteurs')
+        .insert(ajoutes.map(function (id) { return { tournee_id: tourneeId, collecteur_id: id }; }));
+      if (error) return error;
+    }
+    return null;
+  }
+
   function ouvrirDetail(t) {
     setCible(t);
-    setAffectation(t.collecteur_id ?? '');
+    setAffectation(equipePlanifiee(t).map(function (c) { return c.id; }));
     setMessageForm(null);
   }
 
@@ -329,10 +360,11 @@ export default function TourneesPage() {
 
   async function enregistrerAffectation() {
     setEnregistrement(true);
-    const { error } = await supabase
-      .from('tournees')
-      .update({ collecteur_id: affectation || null })
-      .eq('id', cible.id);
+    const error = await enregistrerEquipe(
+      cible.id,
+      equipePlanifiee(cible).map(function (c) { return c.id; }),
+      affectation,
+    );
     setEnregistrement(false);
     if (error) {
       setMessageForm(`Erreur : ${error.message}`);
@@ -615,31 +647,24 @@ export default function TourneesPage() {
             />
           </label>
 
-          <label className="block sm:col-span-2">
+          <div className="block sm:col-span-2">
             <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-              Collecteur
+              Équipe
             </span>
-            <Selecteur
-              value={form.collecteur_id}
-              onChange={function (e) {
-                majChamp('collecteur_id', e.target.value);
+            <ListeCollecteurs
+              collecteurs={collecteurs}
+              choisis={form.collecteurs}
+              disabled={enregistrement}
+              onChange={function (ids) {
+                majChamp('collecteurs', ids);
               }}
-              className="w-full"
-            >
-              <option value="">— Non affectée —</option>
-              {collecteurs.map(function (c) {
-                return (
-                  <option key={c.id} value={c.id}>
-                    {c.nom_complet}
-                  </option>
-                );
-              })}
-            </Selecteur>
+              vide="Aucun collecteur actif pour ces quartiers."
+            />
             <span className="mt-1.5 block text-[11px] text-muted2">
-              Une tournée peut être planifiée sans collecteur, mais elle ne partira pas tant
-              qu&apos;elle n&apos;est pas affectée.
+              Un ou plusieurs collecteurs. Une tournée peut être planifiée sans équipe, mais elle
+              ne partira pas tant qu&apos;elle n&apos;est pas affectée.
             </span>
-          </label>
+          </div>
         </div>
       </Modal> : null}
 
@@ -669,7 +694,7 @@ export default function TourneesPage() {
               {cible?.actif ? 'Suspendre' : 'Réactiver'}
             </Btn>
             <Btn variant="green" disabled={enregistrement} onClick={enregistrerAffectation}>
-              {enregistrement ? 'Enregistrement…' : "Enregistrer l'affectation"}
+              {enregistrement ? 'Enregistrement…' : "Enregistrer l'équipe"}
             </Btn>
           </div>
         }
@@ -684,30 +709,30 @@ export default function TourneesPage() {
           <Badge ton={cible?.actif ? 'teal' : 'muted'}>
             {cible?.actif ? 'Active' : 'Suspendue'}
           </Badge>
-          {cible && !cible.collecteur_id ? <Badge ton="rouge">Sans collecteur</Badge> : null}
+          {cible && equipePlanifiee(cible).length === 0 ? <Badge ton="rouge">Sans collecteur</Badge> : null}
+          {affectation.length ? (
+            <Badge ton="muted">
+              {affectation.length} collecteur{affectation.length > 1 ? 's' : ''}
+            </Badge>
+          ) : null}
         </div>
 
-        <label className="block">
+        <div className="block">
           <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-            Collecteur affecté
+            Équipe planifiée
           </span>
-          <Selecteur
-            value={affectation}
-            onChange={function (e) {
-              setAffectation(e.target.value);
-            }}
-            className="w-full"
-          >
-            <option value="">— Non affectée —</option>
-            {collecteurs.map(function (c) {
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.nom_complet}
-                </option>
-              );
-            })}
-          </Selecteur>
-        </label>
+          <ListeCollecteurs
+            collecteurs={collecteurs}
+            choisis={affectation}
+            disabled={enregistrement}
+            onChange={setAffectation}
+            vide="Aucun collecteur actif pour ce quartier."
+          />
+          <span className="mt-1.5 block text-[11px] text-muted2">
+            Chaque membre voit la tournée dans son application et peut y pointer. Pour un
+            changement d&apos;un seul jour, passez par l&apos;onglet Réalisées.
+          </span>
+        </div>
       </Modal> : null}
     </div>
   );
