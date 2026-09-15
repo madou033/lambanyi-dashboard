@@ -83,7 +83,7 @@ export function Rapprochement({ signalement, ouvert, enCours, onDecider }) {
             .order('pointe_a', { ascending: false }),
           supabase
             .from('tournees_realisation')
-            .select('occurrence_id, jour, heure_debut, statut, debut_at, fin_at, collecteur, collectes, a_desservir')
+            .select('occurrence_id, jour, heure_debut, statut, debut_at, fin_at, collecteurs, collectes, a_desservir')
             .eq('quartier_id', foyer.quartier_id)
             .gte('jour', veille)
             .lte('jour', jour)
