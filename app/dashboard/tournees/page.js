@@ -1,112 +1,103 @@
 'use client';
 
+/**
+ * Tournées — le calendrier.
+ *
+ * Une semaine datée, navigable : chaque carte est une tournée d'un jour
+ * précis, telle que `tournees_occurrences` la porte. Ce n'est plus un gabarit
+ * hebdomadaire qu'on interprète — ce qui s'affiche ici existe en base, et se
+ * modifie ou se retire jour par jour.
+ *
+ * La planification, elle, reste récurrente : une série fabrique ses jours
+ * (voir ModalePlanification), et le calendrier en est le résultat.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import {
-  BandeauErreur,
-  Btn,
-  Champ,
-  Chip,
-  Modal,
-  PageHeader,
-  Selecteur,
-  cn,
-  nombre,
-} from '@/components/ui';
+import { Badge, BandeauErreur, Btn, Chip, PageHeader, Selecteur, cn, nombre } from '@/components/ui';
 import { BandeauMetriques } from '@/components/liste';
 import { IconPlus } from '@/components/icons';
 import { cheminContexte, peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 import { Realisation } from './Realisation';
-import { ListeCollecteurs, equipePlanifiee, nomsEquipe } from './ListeCollecteurs';
+import { nomsEquipe } from './ListeCollecteurs';
+import { ModalePlanification } from './ModalePlanification';
+import { ModaleOccurrence } from './ModaleOccurrence';
+import { ajouterJours, isoLocal, jourCourt, libelleJours, lundiDe, semaineDe, titreSemaine } from './dates';
 
-/** Numérotation ISO 8601 : 1 = lundi … 7 = dimanche. */
-const JOURS = [
-  { valeur: 1, label: 'Lundi', court: 'Lun' },
-  { valeur: 2, label: 'Mardi', court: 'Mar' },
-  { valeur: 3, label: 'Mercredi', court: 'Mer' },
-  { valeur: 4, label: 'Jeudi', court: 'Jeu' },
-  { valeur: 5, label: 'Vendredi', court: 'Ven' },
-  { valeur: 6, label: 'Samedi', court: 'Sam' },
-  { valeur: 7, label: 'Dimanche', court: 'Dim' },
-];
-
-const FORM_VIDE = {
-  quartier_id: '',
-  collecteurs: [],
-  jour_semaine: '1',
-  heure_debut: '07:00',
+const OCCURRENCE = {
+  planifiee: { ton: 'muted', libelle: 'Planifiée', pastille: 'bg-line2' },
+  en_cours: { ton: 'vert', libelle: 'En cours', pastille: 'bg-green' },
+  terminee: { ton: 'teal', libelle: 'Terminée', pastille: 'bg-teal' },
+  non_faite: { ton: 'rouge', libelle: 'Non faite', pastille: 'bg-red' },
+  suspendue: { ton: 'or', libelle: 'Suspendue', pastille: 'bg-gold' },
 };
 
 function heureCourte(h) {
   return h ? String(h).slice(0, 5) : '—';
 }
 
-/** Jour ISO d'aujourd'hui — getDay() rend 0 le dimanche. */
-function jourCourant() {
-  const d = new Date().getDay();
-  return d === 0 ? 7 : d;
-}
-
 /* ------------------------------------------------------------------ */
-/* Carte de tournée                                                    */
+/* Carte d'une tournée du jour                                         */
 /* ------------------------------------------------------------------ */
 
-function CarteTournee({ t, rang, onOuvrir }) {
-  const equipe = equipePlanifiee(t);
-  const affectee = equipe.length > 0;
+function CarteOccurrence({ o, rang, onOuvrir }) {
+  const def = OCCURRENCE[o.statut] || OCCURRENCE.planifiee;
+  const sansEquipe = (o.nb_collecteurs || 0) === 0;
+  const avance = o.jour > isoLocal();
+
   return (
     <button
       type="button"
-      onClick={function () {
-        onOuvrir(t);
-      }}
+      onClick={function () { onOuvrir(o); }}
       className={cn(
         'lp-rise group w-full cursor-pointer rounded-xl border p-2.5 text-left outline-none transition-all duration-150',
         'hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-blue',
-        t.actif
-          ? 'border-line bg-panel hover:border-line2'
-          : 'border-dashed border-line bg-transparent opacity-55 hover:opacity-80',
+        o.statut === 'suspendue'
+          ? 'border-dashed border-line bg-transparent opacity-70 hover:opacity-90'
+          : 'border-line bg-panel hover:border-line2',
       )}
       style={{ animationDelay: `${Math.min(rang, 8) * 35}ms` }}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span
-          className={cn(
-            'font-mono text-[15px] leading-none font-bold tabular-nums',
-            t.actif ? 'text-txt' : 'text-muted2',
-          )}
-        >
-          {heureCourte(t.heure_debut)}
+        <span className="font-mono text-[15px] leading-none font-bold text-txt tabular-nums">
+          {heureCourte(o.heure_debut)}
         </span>
         <span
           aria-hidden
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            !t.actif ? 'bg-line2' : affectee ? 'bg-teal' : 'bg-gold',
-          )}
+          className={cn('size-1.5 shrink-0 rounded-full', sansEquipe && avance ? 'bg-gold' : def.pastille)}
         />
       </div>
 
-      <div
-        className={cn(
-          'font-display mt-1.5 truncate text-[14px] leading-tight font-bold',
-          t.actif ? 'text-txt' : 'text-muted',
-        )}
-      >
-        {t.quartiers?.nom ?? 'Quartier supprimé'}
+      <div className="font-display mt-1.5 truncate text-[14px] leading-tight font-bold text-txt">
+        {o.quartier}
       </div>
 
       <div
-        className={cn(
-          'mt-1 truncate text-[11px]',
-          affectee ? 'text-muted' : 'font-semibold text-gold',
-        )}
+        className={cn('mt-1 truncate text-[11px]', sansEquipe ? 'font-semibold text-gold' : 'text-muted')}
       >
-        {affectee ? nomsEquipe(equipe.map(function (c) { return c.nom_complet; })) : 'Non affectée'}
+        {sansEquipe ? 'Sans collecteur' : nomsEquipe(o.collecteurs_noms || [])}
       </div>
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {!avance || o.statut !== 'planifiee' ? (
+          <span className={cn('text-[10px] font-semibold tracking-wide uppercase', `text-${def.ton === 'vert' ? 'green' : def.ton === 'or' ? 'gold' : def.ton === 'rouge' ? 'red' : def.ton === 'teal' ? 'teal' : 'muted2'}`)}>
+            {def.libelle}
+          </span>
+        ) : null}
+        {o.hors_serie ? <Badge ton="bleu">Rattrapage</Badge> : null}
+        {o.equipe_modifiee ? <Badge ton="bleu">Équipe du jour</Badge> : null}
+        {o.heure_du_jour ? <Badge ton="bleu">Heure</Badge> : null}
+        {o.note ? <span className="truncate text-[10px] text-muted2">{o.note}</span> : null}
+      </div>
+
+      {(o.collectes || 0) + (o.absents || 0) + (o.inaccessibles || 0) > 0 ? (
+        <div className="mt-1 font-mono text-[10.5px] text-muted2 tabular-nums">
+          {nombre(o.collectes)} / {nombre(o.a_desservir)} collectés
+        </div>
+      ) : null}
     </button>
   );
 }
@@ -118,21 +109,25 @@ function CarteTournee({ t, rang, onOuvrir }) {
 export default function TourneesPage() {
   const { ctx } = useContexte();
   const router = useRouter();
-  const [tournees, setTournees] = useState([]);
+  const peutModifier = peutEcrire(ctx);
+
+  const [ancre, setAncre] = useState(function () { return lundiDe(isoLocal()); });
+  const [occurrences, setOccurrences] = useState([]);
+  const [series, setSeries] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [collecteurs, setCollecteurs] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  const [onglet, setOnglet] = useState('planning');
-  const [voirSuspendues, setVoirSuspendues] = useState(true);
+  const [onglet, setOnglet] = useState('calendrier');
   const [filtreQuartier, setFiltreQuartier] = useState('');
   const [filtreCommune, setFiltreCommune] = useState('');
 
-  const [modaleCreation, setModaleCreation] = useState(false);
-  const [form, setForm] = useState(FORM_VIDE);
-  const [enregistrement, setEnregistrement] = useState(false);
-  const [messageForm, setMessageForm] = useState(null);
+  const [planification, setPlanification] = useState(null); // le jour cliqué, ou ''
+  const [ouverte, setOuverte] = useState(null); // l'occurrence ouverte
+
+  const jours = useMemo(function () { return semaineDe(ancre); }, [ancre]);
+  const aujourdhui = isoLocal();
 
   const charger = useCallback(async function () {
     const q = ctx?.communeId || ctx?.lectureCommuneId
@@ -145,14 +140,26 @@ export default function TourneesPage() {
       ? (qResult.data || []).map(function (x) { return x.quartiers; })
       : qResult.data || [];
     const idsQuartiers = quartiersAutorises.map(function (x) { return x.id; });
-    const [t, c] = await Promise.all([
-      idsQuartiers.length === 0 && ctx?.pmeId
+    const aucun = idsQuartiers.length === 0 && ctx?.pmeId;
+    const bornes = [ancre, ajouterJours(ancre, 6)];
+
+    const [o, s, c] = await Promise.all([
+      aucun
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from('tournees_realisation')
+            .select('*')
+            .gte('jour', bornes[0])
+            .lte('jour', bornes[1])
+            .order('jour')
+            .order('heure_debut'),
+      aucun
         ? Promise.resolve({ data: [], error: null })
         : supabase
             .from('tournees')
-            .select('id, jour_semaine, heure_debut, actif, quartier_id, quartiers(nom), tournees_collecteurs(collecteur_id, profils(nom_complet))')
+            .select('id, heure_debut, actif, quartier_id, jours_semaine, date_debut, date_fin, quartiers(nom), tournees_collecteurs(collecteur_id, profils(nom_complet))')
             .in('quartier_id', idsQuartiers.length ? idsQuartiers : ['00000000-0000-0000-0000-000000000000'])
-            .order('jour_semaine')
+            .eq('actif', true)
             .order('heure_debut'),
       ctx?.niveau === 'pme'
         ? supabase
@@ -175,197 +182,113 @@ export default function TourneesPage() {
             )
             .order('nom_complet'),
     ]);
+
     setChargement(false);
-    if (t.error) {
-      setErreur(`Impossible de charger le planning : ${t.error.message}`);
+    if (o.error) {
+      setErreur(`Impossible de charger le calendrier : ${o.error.message}`);
       return;
     }
     setErreur(null);
-    setTournees(t.data || []);
     setQuartiers(quartiersAutorises);
+    setOccurrences(o.data || []);
+    setSeries(s.data || []);
     setCollecteurs(c.data || []);
-  }, [ctx]);
+  }, [ctx, ancre]);
 
   useEffect(
     function () {
-      // Chargement initial. React déconseille de déclencher un fetch depuis un
-      // effet ; la parade propre serait une couche de données (React Query ou
-      // Suspense), ce que ce chantier de design n'introduit pas. Les setState
-      // n'ont lieu qu'après l'await, donc sans rendu en cascade synchrone.
+      // Chargement initial et à chaque semaine. Les setState n'ont lieu
+      // qu'après l'await, donc sans rendu en cascade synchrone.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       charger();
     },
     [charger],
   );
 
+  /* -- Filtres ------------------------------------------------------ */
+
   const quartiersFiltres = useMemo(
     function () {
       if (!filtreCommune) return quartiers;
-      return quartiers.filter(function (q) {
-        return q.commune_id === filtreCommune;
-      });
+      return quartiers.filter(function (q) { return q.commune_id === filtreCommune; });
     },
     [quartiers, filtreCommune],
   );
 
-  const idsQuartiersFiltres = useMemo(
+  const idsVisibles = useMemo(
     function () {
-      return new Set(
-        quartiersFiltres.map(function (q) {
-          return q.id;
-        }),
-      );
+      return new Set(quartiersFiltres.map(function (q) { return q.id; }));
     },
     [quartiersFiltres],
   );
 
   const visibles = useMemo(
     function () {
-      return tournees.filter(function (t) {
-        if (!voirSuspendues && !t.actif) return false;
-        if (filtreCommune && !idsQuartiersFiltres.has(t.quartier_id)) return false;
-        if (filtreQuartier && t.quartier_id !== filtreQuartier) return false;
+      return occurrences.filter(function (o) {
+        if (idsVisibles.size && !idsVisibles.has(o.quartier_id)) return false;
+        if (filtreQuartier && o.quartier_id !== filtreQuartier) return false;
         return true;
       });
     },
-    [tournees, voirSuspendues, filtreQuartier, filtreCommune, idsQuartiersFiltres],
+    [occurrences, filtreQuartier, idsVisibles],
   );
 
   const parJour = useMemo(
     function () {
-      const map = new Map(
-        JOURS.map(function (j) {
-          return [j.valeur, []];
-        }),
-      );
-      visibles.forEach(function (t) {
-        map.get(t.jour_semaine)?.push(t);
+      const map = new Map(jours.map(function (j) { return [j, []]; }));
+      visibles.forEach(function (o) {
+        map.get(o.jour)?.push(o);
       });
       return map;
     },
-    [visibles],
+    [visibles, jours],
   );
 
-  const actives = tournees.filter(function (t) {
-    return t.actif;
-  });
-  const nonAffectees = actives.filter(function (t) {
-    return equipePlanifiee(t).length === 0;
-  }).length;
-  const quartiersCouverts = new Set(
-    actives.map(function (t) {
-      return t.quartier_id;
-    }),
-  ).size;
-  const jourPlein = JOURS.reduce(
-    function (best, j) {
-      const n = actives.filter(function (t) {
-        return t.jour_semaine === j.valeur;
-      }).length;
-      return n > best.n ? { label: j.label, n } : best;
+  const bilan = useMemo(
+    function () {
+      const passees = visibles.filter(function (o) { return o.jour <= aujourdhui; });
+      return {
+        total: visibles.length,
+        terminees: passees.filter(function (o) { return o.statut === 'terminee'; }).length,
+        nonFaites: passees.filter(function (o) { return o.statut === 'non_faite'; }).length,
+        suspendues: visibles.filter(function (o) { return o.statut === 'suspendue'; }).length,
+        sansEquipe: visibles.filter(function (o) {
+          return (o.nb_collecteurs || 0) === 0 && o.jour >= aujourdhui;
+        }).length,
+        collectes: visibles.reduce(function (a, o) { return a + (o.collectes || 0); }, 0),
+        aDesservir: passees.reduce(function (a, o) { return a + (o.a_desservir || 0); }, 0),
+        passees: passees.length,
+      };
     },
-    { label: '—', n: 0 },
+    [visibles, aujourdhui],
   );
 
-  const aujourdhui = jourCourant();
+  const serieDe = useCallback(
+    function (tourneeId) {
+      return series.find(function (s) { return s.id === tourneeId; }) || null;
+    },
+    [series],
+  );
 
-  /* -- Actions ----------------------------------------------------- */
+  /* -- Rendu -------------------------------------------------------- */
 
-  function majChamp(champ, valeur) {
-    setForm(function (f) {
-      return { ...f, [champ]: valeur };
-    });
-  }
-
-  function ouvrirCreation(jour) {
-    setMessageForm(null);
-    setForm({ ...FORM_VIDE, jour_semaine: String(jour ?? aujourdhui) });
-    setModaleCreation(true);
-  }
-
-  async function creerTournee() {
-    setMessageForm(null);
-    if (!form.quartier_id) {
-      setMessageForm('Le quartier est obligatoire.');
-      return;
-    }
-    setEnregistrement(true);
-    const ligne = {
-      quartier_id: form.quartier_id,
-      jour_semaine: parseInt(form.jour_semaine, 10),
-      heure_debut: form.heure_debut,
-    };
-
-    const { data, error } = await supabase.from('tournees').insert(ligne).select('id').single();
-    if (error) {
-      setEnregistrement(false);
-      setMessageForm(`Erreur : ${error.message}`);
-      return;
-    }
-    // L'équipe planifiée, dans la foulée. Une tournée créée sans équipe
-    // reste visible « non affectée » : rien n'est perdu.
-    const erreurEquipe = await enregistrerEquipe(data.id, [], form.collecteurs);
-    setEnregistrement(false);
-    if (erreurEquipe) {
-      setMessageForm(`Tournée créée, mais l'équipe n'a pas pu être enregistrée : ${erreurEquipe.message}`);
-      charger();
-      return;
-    }
-    setModaleCreation(false);
-    charger();
-  }
-
-  /** Aligne l'équipe planifiée sur `apres` : on retire ce qui part, on ajoute ce qui arrive. */
-  async function enregistrerEquipe(tourneeId, avant, apres) {
-    const retires = avant.filter(function (id) { return !apres.includes(id); });
-    const ajoutes = apres.filter(function (id) { return !avant.includes(id); });
-    if (retires.length) {
-      const { error } = await supabase
-        .from('tournees_collecteurs')
-        .delete()
-        .eq('tournee_id', tourneeId)
-        .in('collecteur_id', retires);
-      if (error) return error;
-    }
-    if (ajoutes.length) {
-      const { error } = await supabase
-        .from('tournees_collecteurs')
-        .insert(ajoutes.map(function (id) { return { tournee_id: tourneeId, collecteur_id: id }; }));
-      if (error) return error;
-    }
-    return null;
-  }
-
-  /** La carte ouvre la fiche : foyers desservis, équipe, réalisations. */
-  function ouvrirDetail(t) {
-    router.push(cheminContexte(`/dashboard/tournees/${t.id}`, ctx));
-  }
+  const semaineCourante = ancre === lundiDe(aujourdhui);
 
   return (
     <div className="w-full">
       <PageHeader
-        kicker="Terrain · Planning hebdomadaire"
+        kicker="Terrain · Calendrier des tournées"
         titre="Tournées de collecte"
-        sousTitre="Le passage de chaque quartier, jour par jour. Une tournée sans collecteur affecté ne partira pas."
+        sousTitre="Chaque jour, ce qui est prévu et ce qui s’est passé. Une tournée se modifie ou se retire jour par jour ; la planification, elle, se fait par série."
         actions={
           <>
-            <Btn
-              variant="ghost"
-              onClick={function () {
-                window.print();
-              }}
-            >
-              Imprimer
-            </Btn>
-            {peutEcrire(ctx) ? <Btn
-              variant="green"
-              onClick={function () {
-                ouvrirCreation(null);
-              }}
-            >
-              <IconPlus className="size-4" />
-              Planifier une tournée
-            </Btn> : null}
+            <Btn variant="ghost" onClick={function () { window.print(); }}>Imprimer</Btn>
+            {peutModifier ? (
+              <Btn variant="green" onClick={function () { setPlanification(aujourdhui); }}>
+                <IconPlus className="size-4" />
+                Planifier une tournée
+              </Btn>
+            ) : null}
           </>
         }
       />
@@ -375,118 +298,130 @@ export default function TourneesPage() {
       <BandeauMetriques
         metriques={[
           {
-            label: 'Tournées actives',
-            valeur: chargement ? '—' : nombre(actives.length),
-            sous: `${nombre(tournees.length - actives.length)} suspendue${tournees.length - actives.length > 1 ? 's' : ''}`,
+            label: 'Tournées cette semaine',
+            valeur: chargement ? '—' : nombre(bilan.total),
+            sous: `${nombre(bilan.suspendues)} suspendue${bilan.suspendues > 1 ? 's' : ''}`,
             ton: 'teal',
           },
           {
-            label: 'Quartiers desservis',
-            valeur: chargement ? '—' : nombre(quartiersCouverts),
-            sous: `Sur ${nombre(quartiers.length)} au référentiel`,
-            ton: quartiersCouverts < quartiers.length ? 'or' : 'teal',
+            label: 'Réalisées',
+            valeur: chargement ? '—' : bilan.passees ? `${Math.round((bilan.terminees / bilan.passees) * 100)} %` : '—',
+            sous: `${nombre(bilan.terminees)} sur ${nombre(bilan.passees)} jours écoulés`,
+            ton: bilan.passees && bilan.terminees / bilan.passees >= 0.9 ? 'teal' : bilan.passees ? 'or' : 'defaut',
+          },
+          {
+            label: 'Non faites',
+            valeur: chargement ? '—' : nombre(bilan.nonFaites),
+            sous: bilan.nonFaites > 0 ? 'Aucun pointage ce jour-là' : 'Rien d’oublié',
+            ton: bilan.nonFaites > 0 ? 'rouge' : 'defaut',
           },
           {
             label: 'Sans collecteur',
-            valeur: chargement ? '—' : nombre(nonAffectees),
-            sous: nonAffectees > 0 ? 'À affecter' : 'Toutes affectées',
-            ton: nonAffectees > 0 ? 'rouge' : 'defaut',
-          },
-          {
-            label: 'Jour le plus chargé',
-            valeur: chargement ? '—' : jourPlein.label,
-            sous: `${nombre(jourPlein.n)} tournée${jourPlein.n > 1 ? 's' : ''}`,
+            valeur: chargement ? '—' : nombre(bilan.sansEquipe),
+            sous: bilan.sansEquipe > 0 ? 'À affecter — ne partiront pas' : 'Toutes affectées',
+            ton: bilan.sansEquipe > 0 ? 'rouge' : 'defaut',
           },
         ]}
       />
 
-      {/* Onglets : le planning hebdomadaire, ou ce qui s'est réellement passé. */}
+      {/* Onglets : le calendrier, ou le bilan d'une période. */}
       <div
         className="no-print lp-rise mt-6 flex flex-wrap items-center gap-2"
         style={{ animationDelay: '50ms' }}
         role="tablist"
         aria-label="Vue"
       >
-        <Chip actif={onglet === 'planning'} role="tab" aria-selected={onglet === 'planning'} onClick={function () { setOnglet('planning'); }}>
-          Planning
+        <Chip actif={onglet === 'calendrier'} role="tab" aria-selected={onglet === 'calendrier'} onClick={function () { setOnglet('calendrier'); }}>
+          Calendrier
         </Chip>
-        <Chip actif={onglet === 'realisation'} role="tab" aria-selected={onglet === 'realisation'} onClick={function () { setOnglet('realisation'); }}>
-          Réalisées
+        <Chip actif={onglet === 'bilan'} role="tab" aria-selected={onglet === 'bilan'} onClick={function () { setOnglet('bilan'); }}>
+          Bilan
         </Chip>
       </div>
 
-      {onglet === 'realisation' ? (
-        <Realisation ctx={ctx} tournees={tournees} collecteurs={collecteurs} quartiersAutorises={quartiersFiltres} />
+      {onglet === 'bilan' ? (
+        <Realisation ctx={ctx} quartiersAutorises={quartiersFiltres} />
       ) : null}
 
-      {/* Toolbar */}
+      {/* Barre de navigation de la semaine */}
       <div
-        className={cn('no-print lp-rise mt-4 flex flex-wrap items-center gap-2', onglet !== 'planning' && 'hidden')}
+        className={cn('no-print lp-rise mt-4 flex flex-wrap items-center gap-2', onglet !== 'calendrier' && 'hidden')}
         style={{ animationDelay: '60ms' }}
       >
-        <Chip
-          actif={voirSuspendues}
-          onClick={function () {
-            setVoirSuspendues(function (v) {
-              return !v;
-            });
-          }}
-        >
-          Afficher les suspendues
-        </Chip>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Semaine précédente"
+            onClick={function () { setAncre(ajouterJours(ancre, -7)); }}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-line2 text-muted outline-none transition-colors hover:bg-panel2 hover:text-txt focus-visible:ring-2 focus-visible:ring-blue"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="Semaine suivante"
+            onClick={function () { setAncre(ajouterJours(ancre, 7)); }}
+            className="grid size-8 cursor-pointer place-items-center rounded-lg border border-line2 text-muted outline-none transition-colors hover:bg-panel2 hover:text-txt focus-visible:ring-2 focus-visible:ring-blue"
+          >
+            ›
+          </button>
+        </div>
+        <h2 className="font-display m-0 text-[15px] font-bold text-txt">{titreSemaine(ancre)}</h2>
+        {!semaineCourante ? (
+          <Btn variant="ghost" onClick={function () { setAncre(lundiDe(aujourdhui)); }}>
+            Aujourd’hui
+          </Btn>
+        ) : (
+          <Badge ton="teal">Semaine en cours</Badge>
+        )}
+
         <div className="flex-1" />
+
         <FiltreCommuneRegion
           ctx={ctx}
           valeur={filtreCommune}
-          onChange={function (v) {
-            setFiltreCommune(v);
-            setFiltreQuartier('');
-          }}
+          onChange={function (v) { setFiltreCommune(v); setFiltreQuartier(''); }}
         />
         <Selecteur
           value={filtreQuartier}
           aria-label="Filtrer par quartier"
-          onChange={function (e) {
-            setFiltreQuartier(e.target.value);
-          }}
+          onChange={function (e) { setFiltreQuartier(e.target.value); }}
         >
           <option value="">Tous les quartiers</option>
           {quartiersFiltres.map(function (q) {
-            return (
-              <option key={q.id} value={q.id}>
-                {q.nom}
-              </option>
-            );
+            return <option key={q.id} value={q.id}>{q.nom}</option>;
           })}
         </Selecteur>
       </div>
 
-      {/* Planning */}
+      {/* La semaine */}
       <div
-        className={cn('lp-rise mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7', onglet !== 'planning' && 'hidden')}
+        className={cn('lp-rise mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7', onglet !== 'calendrier' && 'hidden')}
         style={{ animationDelay: '100ms' }}
       >
-        {JOURS.map(function (j) {
-          const duJour = parJour.get(j.valeur) ?? [];
-          const cJour = j.valeur === aujourdhui;
+        {jours.map(function (j) {
+          const duJour = parJour.get(j) ?? [];
+          const cJour = j === aujourdhui;
+          const passe = j < aujourdhui;
           return (
             <section
-              key={j.valeur}
+              key={j}
               className={cn(
                 'flex min-h-[220px] flex-col rounded-xl border p-2.5',
                 cJour ? 'border-line2 bg-panel/40' : 'border-line',
+                passe && 'opacity-80',
               )}
             >
               <header className="mb-2.5 flex items-center justify-between gap-2 border-b border-line pb-2">
                 <div className="min-w-0">
-                  <h2
+                  <h3
                     className={cn(
                       'm-0 truncate text-[11px] tracking-[1.8px] uppercase',
                       cJour ? 'font-semibold text-green' : 'text-muted',
                     )}
                   >
-                    {j.label}
-                  </h2>
+                    {jourCourt(j)}
+                  </h3>
                   {cJour ? (
                     <span className="mt-0.5 block text-[9px] tracking-[1.4px] text-muted2 uppercase">
                       Aujourd&apos;hui
@@ -502,139 +437,103 @@ export default function TourneesPage() {
                 {duJour.length === 0 ? (
                   <p className="m-0 py-4 text-center text-[11px] text-muted2">Aucun passage</p>
                 ) : (
-                  duJour.map(function (t, rang) {
+                  duJour.map(function (o, rang) {
                     return (
-                      <CarteTournee key={t.id} t={t} rang={rang} onOuvrir={ouvrirDetail} />
+                      <CarteOccurrence
+                        key={o.occurrence_id}
+                        o={o}
+                        rang={rang}
+                        onOuvrir={peutModifier ? setOuverte : function () {
+                          router.push(cheminContexte(`/dashboard/tournees/${o.tournee_id}`, ctx));
+                        }}
+                      />
                     );
                   })
                 )}
               </div>
 
-              {peutEcrire(ctx) ? <button
-                type="button"
-                onClick={function () {
-                  ouvrirCreation(j.valeur);
-                }}
-                className="no-print mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-1.5 text-[11px] text-muted2 outline-none transition-colors hover:border-line2 hover:text-muted focus-visible:ring-2 focus-visible:ring-blue"
-              >
-                <IconPlus className="size-3" />
-                Ajouter
-              </button> : null}
+              {peutModifier ? (
+                <button
+                  type="button"
+                  onClick={function () { setPlanification(j); }}
+                  className="no-print mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line py-1.5 text-[11px] text-muted2 outline-none transition-colors hover:border-line2 hover:text-muted focus-visible:ring-2 focus-visible:ring-blue"
+                >
+                  <IconPlus className="size-3" />
+                  Planifier
+                </button>
+              ) : null}
             </section>
           );
         })}
       </div>
 
-      {/* Création */}
-      {peutEcrire(ctx) ? <Modal
-        ouvert={modaleCreation}
-        onFermer={function () {
-          setModaleCreation(false);
-        }}
-        titre="Planifier une tournée"
-        sousTitre="Un passage récurrent, chaque semaine au même jour et à la même heure."
-        bloquerFermeture={enregistrement}
-        pied={
-          <div className="flex flex-wrap justify-end gap-2">
-            <Btn
-              variant="ghost"
-              disabled={enregistrement}
-              onClick={function () {
-                setModaleCreation(false);
-              }}
-            >
-              Annuler
-            </Btn>
-            <Btn variant="green" disabled={enregistrement} onClick={creerTournee}>
-              {enregistrement ? 'Enregistrement…' : 'Planifier'}
-            </Btn>
-          </div>
-        }
-      >
-        {messageForm ? (
-          <p className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--lp-red)_45%,transparent)] bg-[color-mix(in_srgb,var(--lp-red)_14%,transparent)] px-4 py-2.5 text-[12.5px] text-txt">
-            {messageForm}
-          </p>
-        ) : null}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-              Quartier *
-            </span>
-            <Selecteur
-              value={form.quartier_id}
-              onChange={function (e) {
-                majChamp('quartier_id', e.target.value);
-              }}
-              className="w-full"
-            >
-              <option value="">— Choisir —</option>
-              {quartiers.map(function (q) {
-                return (
-                  <option key={q.id} value={q.id}>
-                    {q.nom}
-                  </option>
-                );
-              })}
-            </Selecteur>
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-              Jour
-            </span>
-            <Selecteur
-              value={form.jour_semaine}
-              onChange={function (e) {
-                majChamp('jour_semaine', e.target.value);
-              }}
-              className="w-full"
-            >
-              {JOURS.map(function (j) {
-                return (
-                  <option key={j.valeur} value={j.valeur}>
-                    {j.label}
-                  </option>
-                );
-              })}
-            </Selecteur>
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-              Heure de début
-            </span>
-            <Champ
-              type="time"
-              value={form.heure_debut}
-              onChange={function (e) {
-                majChamp('heure_debut', e.target.value);
-              }}
-            />
-          </label>
-
-          <div className="block sm:col-span-2">
-            <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">
-              Équipe
-            </span>
-            <ListeCollecteurs
-              collecteurs={collecteurs}
-              choisis={form.collecteurs}
-              disabled={enregistrement}
-              onChange={function (ids) {
-                majChamp('collecteurs', ids);
-              }}
-              vide="Aucun collecteur actif pour ces quartiers."
-            />
-            <span className="mt-1.5 block text-[11px] text-muted2">
-              Un ou plusieurs collecteurs. Une tournée peut être planifiée sans équipe, mais elle
-              ne partira pas tant qu&apos;elle n&apos;est pas affectée.
-            </span>
-          </div>
+      {/* Les séries, pour atteindre leur fiche : le calendrier montre des jours,
+          pas la règle qui les produit. */}
+      <section className={cn('lp-rise mt-8', onglet !== 'calendrier' && 'hidden')} style={{ animationDelay: '140ms' }}>
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-line pb-2.5">
+          <h2 className="m-0 text-[11px] tracking-[2.4px] text-muted uppercase">
+            Tournées planifiées · {nombre(series.filter(function (s) { return !filtreQuartier || s.quartier_id === filtreQuartier; }).length)}
+          </h2>
         </div>
-      </Modal> : null}
+        <div className="flex flex-wrap gap-2">
+          {series
+            .filter(function (s) {
+              if (idsVisibles.size && !idsVisibles.has(s.quartier_id)) return false;
+              if (filtreQuartier && s.quartier_id !== filtreQuartier) return false;
+              return true;
+            })
+            .map(function (s) {
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={function () { router.push(cheminContexte(`/dashboard/tournees/${s.id}`, ctx)); }}
+                  className="cursor-pointer rounded-xl border border-line bg-panel px-3 py-2 text-left outline-none transition-colors hover:border-line2 focus-visible:ring-2 focus-visible:ring-blue"
+                >
+                  <span className="font-mono text-[12px] font-bold text-txt tabular-nums">
+                    {heureCourte(s.heure_debut)}
+                  </span>
+                  <span className="ml-2 text-[12.5px] font-semibold text-txt">
+                    {s.quartiers?.nom || 'Quartier supprimé'}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-muted2">
+                    {libelleJours(s.jours_semaine)}
+                    {s.date_fin ? ` · jusqu’au ${s.date_fin}` : ' · sans fin'}
+                  </span>
+                </button>
+              );
+            })}
+          {series.length === 0 && !chargement ? (
+            <p className="m-0 py-2 text-[12.5px] text-muted2">
+              Aucune tournée planifiée sur ce périmètre.
+            </p>
+          ) : null}
+        </div>
+      </section>
 
+      {/* Modales */}
+      {peutModifier ? (
+        <ModalePlanification
+          ouvert={planification !== null}
+          jour={planification || ''}
+          quartiers={quartiersFiltres}
+          collecteurs={collecteurs}
+          series={series}
+          onFermer={function () { setPlanification(null); }}
+          onFait={function () { setPlanification(null); charger(); }}
+        />
+      ) : null}
+
+      {peutModifier && ouverte ? (
+        <ModaleOccurrence
+          occurrence={ouverte}
+          serie={serieDe(ouverte.tournee_id)}
+          collecteurs={collecteurs}
+          passee={ouverte.jour < aujourdhui}
+          onFermer={function () { setOuverte(null); }}
+          onFait={function () { setOuverte(null); charger(); }}
+        />
+      ) : null}
     </div>
   );
 }

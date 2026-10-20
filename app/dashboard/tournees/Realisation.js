@@ -1,22 +1,21 @@
 'use client';
 
 /**
- * Les tournées réalisées : ce qui était prévu, ce qui est parti, quand, et
- * ce qui a été collecté. Alimenté par la vue `tournees_realisation` et la
- * table `tournees_occurrences`.
+ * Le bilan d'une période : taux de réalisation, retards au départ, journées
+ * non faites, foyers collectés.
  *
- * Deux usages :
- *   - gérer un jour : désigner un remplaçant, suspendre une tournée (férié,
- *     panne), rétablir ;
- *   - lire une période : taux de réalisation, retards, non faites.
+ * La gestion d'un jour — remplaçant, suspension, note, heure — vit désormais
+ * dans le calendrier : une tournée s'y règle là où on la voit. Il reste ici ce
+ * qu'un calendrier ne montre pas, parce que ça ne tient pas dans une case :
+ * la tendance sur plusieurs semaines.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Badge, Btn, Champ, Chip, Modal, nombre, heure } from '@/components/ui';
-import { BandeauMetriques, CarteListe, Tableau, Tr, Td } from '@/components/liste';
-import { peutEcrire } from '@/lib/contexte';
-import { ListeCollecteurs, equipePlanifiee, nomsEquipe } from './ListeCollecteurs';
+import { Badge, Chip, heure, nombre } from '@/components/ui';
+import { BandeauMetriques, CarteListe, Tableau, Tr, Td, exporterCsv, usePagination } from '@/components/liste';
+import { Btn, PaginationBar } from '@/components/ui';
+import { ajouterJours, isoLocal, jourMois } from './dates';
 
 const OCCURRENCE = {
   planifiee: { ton: 'muted', libelle: 'Planifiée' },
@@ -26,170 +25,110 @@ const OCCURRENCE = {
   suspendue: { ton: 'or', libelle: 'Suspendue' },
 };
 
-const JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
-
-function isoLocal(d = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function jourIso(iso) {
-  const d = new Date(`${iso}T12:00:00`);
-  const j = d.getDay();
-  return j === 0 ? 7 : j;
-}
-
-function dateLisible(iso) {
-  const d = new Date(`${iso}T12:00:00`);
-  return `${JOURS_COURTS[d.getDay()]} ${d.getDate()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function retardLisible(min) {
   if (min == null) return '—';
   if (Math.abs(min) < 5) return 'à l’heure';
   return min > 0 ? `+${min} min` : `${min} min`;
 }
 
-export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) {
-  const [jour, setJour] = useState(isoLocal());
+export function Realisation({ ctx, quartiersAutorises }) {
   const [periode, setPeriode] = useState(14);
   const [historique, setHistorique] = useState([]);
-  const [duJour, setDuJour] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
 
-  const [cible, setCible] = useState(null);         // { tournee, occurrence }
-  const [equipeDuJour, setEquipeDuJour] = useState([]);
-  const [note, setNote] = useState('');
-  const [enregistrement, setEnregistrement] = useState(false);
-
   const idsQuartiers = useMemo(
-    () => new Set((quartiersAutorises || []).map((q) => q.id)),
+    function () {
+      return new Set((quartiersAutorises || []).map(function (q) { return q.id; }));
+    },
     [quartiersAutorises],
   );
 
   const charger = useCallback(async function () {
     setChargement(true);
-    const depuis = new Date();
-    depuis.setDate(depuis.getDate() - periode);
-
-    const [h, j] = await Promise.all([
-      supabase
-        .from('tournees_realisation')
-        .select('*')
-        .gte('jour', isoLocal(depuis))
-        .lte('jour', isoLocal())
-        .order('jour', { ascending: false })
-        .order('heure_debut'),
-      supabase
-        .from('tournees_realisation')
-        .select('*')
-        .eq('jour', jour),
-    ]);
+    const aujourdhui = isoLocal();
+    const { data, error } = await supabase
+      .from('tournees_realisation')
+      .select('occurrence_id, tournee_id, jour, statut, debut_at, retard_min, note, hors_serie, quartier_id, quartier, heure_debut, heure_du_jour, collecteurs, equipe_modifiee, collectes, a_desservir, absents, inaccessibles, hors_seuil')
+      .gte('jour', ajouterJours(aujourdhui, -periode))
+      .lte('jour', aujourdhui)
+      .order('jour', { ascending: false })
+      .order('heure_debut');
 
     setChargement(false);
-    if (h.error || j.error) {
-      setErreur(`Impossible de lire la réalisation : ${(h.error || j.error).message}`);
+    if (error) {
+      setErreur(`Impossible de lire la réalisation : ${error.message}`);
       return;
     }
     setErreur(null);
-    setHistorique((h.data || []).filter((r) => idsQuartiers.size === 0 || idsQuartiers.has(r.quartier_id)));
-    setDuJour(j.data || []);
-  }, [jour, periode, idsQuartiers]);
+    setHistorique(data || []);
+  }, [periode]);
 
-  useEffect(function () {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    charger();
-  }, [charger]);
-
-  // Les tournées du jour choisi : le planning du jour de semaine, fusionné
-  // avec les occurrences qui existent déjà (elles n'existent qu'à partir de
-  // la nuit précédente, ou dès qu'on agit dessus).
-  const lignesDuJour = useMemo(function () {
-    const js = jourIso(jour);
-    const occurrences = new Map(duJour.map((o) => [o.tournee_id, o]));
-    return (tournees || [])
-      .filter((t) => t.actif && t.jour_semaine === js)
-      .filter((t) => idsQuartiers.size === 0 || idsQuartiers.has(t.quartier_id))
-      .map((t) => ({ tournee: t, occurrence: occurrences.get(t.id) || null }))
-      .sort((a, b) => String(a.tournee.heure_debut).localeCompare(String(b.tournee.heure_debut)));
-  }, [tournees, duJour, jour, idsQuartiers]);
-
-  // Indicateurs de période : seules les journées passées comptent.
-  const bilan = useMemo(function () {
-    const passees = historique.filter((r) => r.jour < isoLocal() || ['terminee', 'non_faite', 'suspendue'].includes(r.statut));
-    const total = passees.length;
-    const faites = passees.filter((r) => r.statut === 'terminee' || r.statut === 'en_cours').length;
-    const nonFaites = passees.filter((r) => r.statut === 'non_faite').length;
-    const suspendues = passees.filter((r) => r.statut === 'suspendue').length;
-    const retards = passees.filter((r) => r.retard_min != null).map((r) => r.retard_min);
-    const retardMoyen = retards.length ? Math.round(retards.reduce((a, b) => a + b, 0) / retards.length) : null;
-    const collectes = passees.reduce((a, r) => a + (r.collectes || 0), 0);
-    const aDesservir = passees.reduce((a, r) => a + (r.a_desservir || 0), 0);
-    const horsSeuil = passees.reduce((a, r) => a + (r.hors_seuil || 0), 0);
-    return { total, faites, nonFaites, suspendues, retardMoyen, collectes, aDesservir, horsSeuil };
-  }, [historique]);
-
-  function idsPlanifies(tournee) {
-    return equipePlanifiee(tournee).map(function (c) { return c.id; });
-  }
-
-  function ouvrir(ligne) {
-    setCible(ligne);
-    // L'équipe du jour telle que la vue la calcule : celle du planning tant
-    // que personne ne l'a modifiée.
-    setEquipeDuJour(ligne.occurrence ? ligne.occurrence.collecteurs_ids || [] : idsPlanifies(ligne.tournee));
-    setNote(ligne.occurrence?.note || '');
-  }
-
-  async function enregistrer(statut) {
-    if (!cible) return;
-    setEnregistrement(true);
-    const ligne = {
-      tournee_id: cible.tournee.id,
-      jour,
-      note: note.trim() || null,
-    };
-    if (statut) ligne.statut = statut;
-    const occ = await supabase
-      .from('tournees_occurrences')
-      .upsert(ligne, { onConflict: 'tournee_id,jour' })
-      .select('id')
-      .single();
-    if (occ.error) {
-      setEnregistrement(false);
-      setErreur(`Enregistrement refusé : ${occ.error.message}`);
-      return;
-    }
-
-    // L'équipe du jour n'est écrite que si elle diffère du planning : sinon
-    // la tournée suit le planning, et une réaffectation ultérieure s'y
-    // reflète d'elle-même.
-    const planifies = idsPlanifies(cible.tournee);
-    const identique =
-      planifies.length === equipeDuJour.length
-      && planifies.every(function (id) { return equipeDuJour.includes(id); });
-    const vider = await supabase
-      .from('tournees_occurrences_collecteurs')
-      .delete()
-      .eq('occurrence_id', occ.data.id);
-    const remplir = !vider.error && !identique && equipeDuJour.length
-      ? await supabase
-          .from('tournees_occurrences_collecteurs')
-          .insert(equipeDuJour.map(function (id) { return { occurrence_id: occ.data.id, collecteur_id: id }; }))
-      : { error: null };
-    setEnregistrement(false);
-    const error = vider.error || remplir.error;
-    if (error) {
-      setErreur(`L'équipe du jour n'a pas pu être enregistrée : ${error.message}`);
+  useEffect(
+    function () {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       charger();
-      return;
-    }
-    setCible(null);
-    charger();
-  }
+    },
+    [charger],
+  );
 
-  const aujourdhui = isoLocal();
+  const lignes = useMemo(
+    function () {
+      return historique.filter(function (r) {
+        return idsQuartiers.size === 0 || idsQuartiers.has(r.quartier_id);
+      });
+    },
+    [historique, idsQuartiers],
+  );
+
+  const pagination = usePagination(lignes, 25);
+
+  // Indicateurs de période : seules les journées écoulées comptent.
+  const bilan = useMemo(
+    function () {
+      const total = lignes.length;
+      const faites = lignes.filter(function (r) { return r.statut === 'terminee' || r.statut === 'en_cours'; }).length;
+      const nonFaites = lignes.filter(function (r) { return r.statut === 'non_faite'; }).length;
+      const suspendues = lignes.filter(function (r) { return r.statut === 'suspendue'; }).length;
+      const retards = lignes.filter(function (r) { return r.retard_min != null; }).map(function (r) { return r.retard_min; });
+      const retardMoyen = retards.length
+        ? Math.round(retards.reduce(function (a, b) { return a + b; }, 0) / retards.length)
+        : null;
+      return {
+        total,
+        faites,
+        nonFaites,
+        suspendues,
+        retardMoyen,
+        collectes: lignes.reduce(function (a, r) { return a + (r.collectes || 0); }, 0),
+        aDesservir: lignes.reduce(function (a, r) { return a + (r.a_desservir || 0); }, 0),
+        horsSeuil: lignes.reduce(function (a, r) { return a + (r.hors_seuil || 0); }, 0),
+      };
+    },
+    [lignes],
+  );
+
+  function exporter() {
+    exporterCsv(
+      `tournees-${periode}j-${isoLocal()}.csv`,
+      ['Jour', 'Heure', 'Quartier', 'Équipe', 'État', 'Départ', 'Retard (min)', 'Collectés', 'À desservir', 'Absents', 'Hors seuil'],
+      lignes.map(function (r) {
+        return [
+          r.jour,
+          String(r.heure_debut).slice(0, 5),
+          r.quartier,
+          r.collecteurs || '',
+          (OCCURRENCE[r.statut] || {}).libelle || r.statut,
+          r.debut_at ? heure(r.debut_at) : '',
+          r.retard_min ?? '',
+          r.collectes,
+          r.a_desservir,
+          (r.absents || 0) + (r.inaccessibles || 0),
+          r.hors_seuil,
+        ];
+      }),
+    );
+  }
 
   return (
     <div className="mt-6 space-y-6">
@@ -210,7 +149,7 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
           {
             label: 'Retard moyen au départ',
             valeur: chargement ? '—' : retardLisible(bilan.retardMoyen),
-            sous: 'Par rapport à l’heure planifiée',
+            sous: 'Par rapport à l’heure prévue ce jour-là',
             ton: bilan.retardMoyen != null && bilan.retardMoyen > 30 ? 'or' : 'defaut',
           },
           {
@@ -225,162 +164,67 @@ export function Realisation({ ctx, tournees, collecteurs, quartiersAutorises }) 
       {erreur ? <p className="m-0 text-[12.5px] text-red">{erreur}</p> : null}
 
       <CarteListe
-        titre="Gérer un jour"
-        sousTitre="Remplaçant, suspension, note. Le collecteur voit le changement dans son application."
-        outils={
-          <Champ
-            type="date"
-            value={jour}
-            aria-label="Jour"
-            onChange={function (e) { setJour(e.target.value); }}
-          />
-        }
-      >
-        <Tableau
-          colonnes={[
-            { cle: 'heure', label: 'Heure' },
-            { cle: 'quartier', label: 'Quartier' },
-            { cle: 'collecteur', label: 'Collecteur' },
-            { cle: 'tat', label: 'État' },
-            { cle: 'dpart', label: 'Départ' },
-            { cle: 'collects', label: 'Collectés', align: 'right' },
-            { cle: 'action', label: '' },
-          ]}
-          vide="Aucune tournée planifiée ce jour-là."
-        >
-          {lignesDuJour.map(function ({ tournee, occurrence }, i) {
-            const statut = occurrence?.statut || 'planifiee';
-            const def = OCCURRENCE[statut] || OCCURRENCE.planifiee;
-            return (
-              <Tr key={tournee.id} rang={i}>
-                <Td mono>{String(tournee.heure_debut).slice(0, 5)}</Td>
-                <Td fort>{tournee.quartiers?.nom || '—'}</Td>
-                <Td>
-                  {occurrence
-                    ? occurrence.collecteurs || <span className="text-red">Sans collecteur</span>
-                    : nomsEquipe(equipePlanifiee(tournee).map(function (c) { return c.nom_complet; }), 3)
-                      || <span className="text-red">Sans collecteur</span>}
-                  {occurrence?.equipe_modifiee ? <Badge ton="bleu" className="ml-2">Équipe du jour</Badge> : null}
-                </Td>
-                <Td>
-                  <Badge ton={def.ton}>{def.libelle}</Badge>
-                  {occurrence?.note ? <span className="ml-2 text-[12px] text-muted2">{occurrence.note}</span> : null}
-                </Td>
-                <Td mono>
-                  {occurrence?.debut_at ? `${heure(occurrence.debut_at)} · ${retardLisible(occurrence.retard_min)}` : '—'}
-                </Td>
-                <Td align="right" mono>
-                  {occurrence ? `${nombre(occurrence.collectes)} / ${nombre(occurrence.a_desservir)}` : '—'}
-                </Td>
-                <Td align="right">
-                  {peutEcrire(ctx) ? (
-                    <Btn variant="ghost" onClick={function () { ouvrir({ tournee, occurrence }); }}>
-                      Gérer
-                    </Btn>
-                  ) : null}
-                </Td>
-              </Tr>
-            );
-          })}
-        </Tableau>
-      </CarteListe>
-
-      <CarteListe
-        titre="Historique"
-        sousTitre="Chaque tournée de chaque jour, la plus récente en premier."
-        chips={[7, 14, 30].map(function (n) {
+        titre="Journal des tournées"
+        sousTitre="Chaque tournée de chaque jour, la plus récente en premier. Pour la régler, ouvrez-la dans le calendrier."
+        outils={<Btn variant="ghost" onClick={exporter}>Exporter en CSV</Btn>}
+        chips={[7, 14, 30, 90].map(function (n) {
           return (
             <Chip key={n} actif={periode === n} onClick={function () { setPeriode(n); }}>
               {n} jours
             </Chip>
           );
         })}
+        pied={
+          <PaginationBar
+            page={pagination.page}
+            pages={pagination.pages}
+            total={lignes.length}
+            onChange={pagination.setPage}
+          />
+        }
       >
         <Tableau
           colonnes={[
             { cle: 'jour', label: 'Jour' },
             { cle: 'heure', label: 'Heure' },
             { cle: 'quartier', label: 'Quartier' },
-            { cle: 'collecteur', label: 'Collecteur' },
-            { cle: 'tat', label: 'État' },
-            { cle: 'dpart', label: 'Départ' },
-            { cle: 'collects', label: 'Collectés', align: 'right' },
+            { cle: 'equipe', label: 'Équipe' },
+            { cle: 'etat', label: 'État' },
+            { cle: 'depart', label: 'Départ' },
+            { cle: 'collectes', label: 'Collectés', align: 'right' },
             { cle: 'absents', label: 'Absents', align: 'right' },
             { cle: 'horsseuil', label: 'Hors seuil', align: 'right' },
           ]}
           vide={chargement ? 'Chargement…' : 'Aucune tournée sur la période.'}
         >
-          {historique.map(function (r, i) {
+          {pagination.tranche.map(function (r, i) {
             const def = OCCURRENCE[r.statut] || OCCURRENCE.planifiee;
-            const futur = r.jour > aujourdhui;
             return (
               <Tr key={r.occurrence_id} rang={i}>
-                <Td mono>{dateLisible(r.jour)}</Td>
-                <Td mono>{String(r.heure_debut).slice(0, 5)}</Td>
+                <Td mono>{jourMois(r.jour)}</Td>
+                <Td mono>
+                  {String(r.heure_debut).slice(0, 5)}
+                  {r.heure_du_jour ? <span className="ml-1 text-blue">•</span> : null}
+                </Td>
                 <Td fort>{r.quartier}</Td>
                 <Td>
                   {r.collecteurs || <span className="text-red">Sans collecteur</span>}
                   {r.equipe_modifiee ? <Badge ton="bleu" className="ml-2">Équipe du jour</Badge> : null}
                 </Td>
-                <Td><Badge ton={futur ? 'muted' : def.ton}>{futur ? 'À venir' : def.libelle}</Badge></Td>
+                <Td>
+                  <Badge ton={def.ton}>{def.libelle}</Badge>
+                  {r.hors_serie ? <Badge ton="bleu" className="ml-2">Rattrapage</Badge> : null}
+                  {r.note ? <span className="ml-2 text-[12px] text-muted2">{r.note}</span> : null}
+                </Td>
                 <Td mono>{r.debut_at ? `${heure(r.debut_at)} · ${retardLisible(r.retard_min)}` : '—'}</Td>
                 <Td align="right" mono>{nombre(r.collectes)} / {nombre(r.a_desservir)}</Td>
-                <Td align="right" mono>{nombre(r.absents + r.inaccessibles)}</Td>
+                <Td align="right" mono>{nombre((r.absents || 0) + (r.inaccessibles || 0))}</Td>
                 <Td align="right" mono className={r.hors_seuil > 0 ? 'text-gold' : ''}>{nombre(r.hors_seuil)}</Td>
               </Tr>
             );
           })}
         </Tableau>
       </CarteListe>
-
-      <Modal
-        ouvert={Boolean(cible)}
-        onFermer={function () { setCible(null); }}
-        titre={cible ? `${cible.tournee.quartiers?.nom || 'Tournée'} · ${dateLisible(jour)} · ${String(cible.tournee.heure_debut).slice(0, 5)}` : ''}
-        sousTitre="Ce que vous décidez ici ne vaut que pour ce jour. Le planning hebdomadaire ne change pas."
-        pied={
-          <>
-            <Btn variant="ghost" onClick={function () { setCible(null); }}>Annuler</Btn>
-            {cible?.occurrence?.statut === 'suspendue' ? (
-              <Btn variant="green" disabled={enregistrement} onClick={function () { enregistrer('planifiee'); }}>
-                Rétablir la tournée
-              </Btn>
-            ) : (
-              <Btn variant="ghost" disabled={enregistrement} onClick={function () { enregistrer('suspendue'); }}>
-                Suspendre ce jour
-              </Btn>
-            )}
-            <Btn variant="green" disabled={enregistrement} onClick={function () { enregistrer(null); }}>
-              {enregistrement ? 'Enregistrement…' : 'Enregistrer'}
-            </Btn>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="block">
-            <span className="mb-1 block text-[12px] text-muted">Équipe ce jour</span>
-            <ListeCollecteurs
-              collecteurs={collecteurs || []}
-              choisis={equipeDuJour}
-              disabled={enregistrement}
-              onChange={setEquipeDuJour}
-              vide="Aucun collecteur disponible."
-            />
-            <span className="mt-1.5 block text-[11px] text-muted2">
-              {cible ? `Planning : ${nomsEquipe(equipePlanifiee(cible.tournee).map(function (c) { return c.nom_complet; }), 4) || 'personne'}. ` : ''}
-              Cochez un remplaçant, ajoutez un renfort, retirez un absent : seul ce jour change.
-            </span>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">Note (visible par le collecteur)</span>
-            <Champ
-              value={note}
-              placeholder="Jour férié, panne de charrette, agent absent…"
-              onChange={function (e) { setNote(e.target.value); }}
-            />
-          </label>
-        </div>
-      </Modal>
     </div>
   );
 }

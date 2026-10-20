@@ -15,14 +15,13 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BandeauFiche } from '@/components/fiche';
 import { BandeauMetriques, CarteListe, Recherche, Tableau, Tr, Td, usePagination } from '@/components/liste';
-import { Badge, BandeauErreur, Btn, Chip, Panel, PaginationBar, heure, nombre } from '@/components/ui';
+import { Badge, BandeauErreur, Btn, Champ, Chip, ModalConfirmation, Panel, PaginationBar, Selecteur, cn, heure, nombre } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { cheminContexte, peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { ListeCollecteurs, equipePlanifiee, nomsEquipe } from '../ListeCollecteurs';
 import { FicheFoyer, etatAbonnement } from './FicheFoyer';
-
-const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+import { JOURS, PORTEES, ajouterJours, dateLongue, finDePortee, isoLocal, jourMois, libelleJours } from '../dates';
 
 const OCCURRENCE = {
   planifiee: { ton: 'muted', libelle: 'Planifiée' },
@@ -48,12 +47,6 @@ const FILTRES = [
 
 function heureCourte(h) {
   return h ? String(h).slice(0, 5) : '—';
-}
-
-function dateCourte(iso) {
-  if (!iso) return '—';
-  const d = new Date(`${iso}T12:00:00`);
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
 function relation(objet) {
@@ -94,6 +87,10 @@ export default function TourneePage() {
   const [foyerOuvert, setFoyerOuvert] = useState(null);
 
   const [equipe, setEquipe] = useState([]);
+  const [recJours, setRecJours] = useState([]);
+  const [recHeure, setRecHeure] = useState('07:00');
+  const [recPortee, setRecPortee] = useState('sans_fin');
+  const [confirmArret, setConfirmArret] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -103,16 +100,16 @@ export default function TourneePage() {
       const [t, f, r] = await Promise.all([
         supabase
           .from('tournees')
-          .select('id, jour_semaine, heure_debut, actif, quartier_id, quartiers(nom, commune_id), tournees_collecteurs(collecteur_id, profils(nom_complet, telephone))')
+          .select('id, heure_debut, actif, quartier_id, jours_semaine, date_debut, date_fin, quartiers(nom, commune_id), tournees_collecteurs(collecteur_id, profils(nom_complet, telephone))')
           .eq('id', id)
           .maybeSingle(),
         supabase.rpc('foyers_de_tournee', { p_tournee_id: id }),
         supabase
           .from('tournees_realisation')
-          .select('occurrence_id, jour, statut, debut_at, fin_at, collecteurs, collectes, a_desservir, absents, inaccessibles, note')
+          .select('occurrence_id, jour, statut, debut_at, fin_at, collecteurs, collectes, a_desservir, absents, inaccessibles, note, hors_serie, heure_debut, heure_du_jour, equipe_modifiee')
           .eq('tournee_id', id)
-          .order('jour', { ascending: false })
-          .limit(8),
+          .gte('jour', ajouterJours(isoLocal(), -60))
+          .order('jour', { ascending: false }),
       ]);
 
       if (t.error || !t.data) {
@@ -123,6 +120,9 @@ export default function TourneePage() {
       }
       setTournee(t.data);
       setEquipe(equipePlanifiee(t.data).map(function (c) { return c.id; }));
+      setRecJours(t.data.jours_semaine || []);
+      setRecHeure(String(t.data.heure_debut).slice(0, 5));
+      setRecPortee(t.data.date_fin ? 'fixe' : 'sans_fin');
       setRealisations(r.data || []);
 
       if (f.error) {
@@ -172,6 +172,26 @@ export default function TourneePage() {
 
   const quartier = relation(tournee?.quartiers)?.nom || 'Quartier';
   const equipeActuelle = useMemo(function () { return equipePlanifiee(tournee); }, [tournee]);
+
+  // Le calendrier de la serie, coupe a aujourd'hui : ce qui vient, ce qui est
+  // advenu. Le jour courant compte comme a venir -- il n'est pas joue.
+  const aujourdhui = isoLocal();
+  const aVenir = useMemo(
+    function () {
+      return realisations
+        .filter(function (r) { return r.jour >= aujourdhui; })
+        .slice()
+        .sort(function (a, b) { return a.jour.localeCompare(b.jour); })
+        .slice(0, 8);
+    },
+    [realisations, aujourdhui],
+  );
+  const passees = useMemo(
+    function () {
+      return realisations.filter(function (r) { return r.jour < aujourdhui; }).slice(0, 8);
+    },
+    [realisations, aujourdhui],
+  );
   const equipeModifiee = useMemo(
     function () {
       const avant = equipeActuelle.map(function (c) { return c.id; });
@@ -239,14 +259,48 @@ export default function TourneePage() {
     charger();
   }
 
-  async function basculerActif() {
+  /**
+   * La recurrence : les jours, l'heure, la portee. Tout changement rejoue
+   * l'avenir intact de la serie -- les jours deja regles a la main et ceux
+   * qui portent des pointages ne bougent pas.
+   */
+  async function enregistrerRecurrence() {
+    setMessage(null);
+    if (recJours.length === 0) {
+      setMessage({ ton: 'rouge', texte: 'Choisissez au moins un jour de la semaine.' });
+      return;
+    }
     setEnregistrement(true);
-    const { error } = await supabase.from('tournees').update({ actif: !tournee.actif }).eq('id', id);
+    const sansFin = recPortee === 'sans_fin';
+    const { error } = await supabase.rpc('modifier_serie', {
+      p_tournee_id: id,
+      p_heure_debut: recHeure,
+      p_jours: recJours,
+      p_date_fin: sansFin ? null : finDePortee(recPortee, isoLocal()),
+      p_sans_fin: sansFin,
+    });
     setEnregistrement(false);
     if (error) {
       setMessage({ ton: 'rouge', texte: `Erreur : ${error.message}` });
       return;
     }
+    setMessage({ ton: 'teal', texte: 'Récurrence enregistrée. Les jours à venir ont été refaits.' });
+    charger();
+  }
+
+  async function arreterSerie() {
+    setEnregistrement(true);
+    const { data, error } = await supabase.rpc('arreter_serie', { p_tournee_id: id });
+    setEnregistrement(false);
+    setConfirmArret(false);
+    if (error) {
+      setMessage({ ton: 'rouge', texte: `Erreur : ${error.message}` });
+      return;
+    }
+    setMessage({
+      ton: 'teal',
+      texte: `${nombre(data)} jour${data > 1 ? 's' : ''} à venir retiré${data > 1 ? 's' : ''}. L’historique est conservé.`,
+    });
     charger();
   }
 
@@ -270,7 +324,9 @@ export default function TourneePage() {
     );
   }
 
-  const titre = chargement ? 'Chargement…' : `${quartier} · ${JOURS[tournee.jour_semaine - 1]} ${heureCourte(tournee.heure_debut)}`;
+  const titre = chargement
+    ? 'Chargement…'
+    : `${quartier} · ${heureCourte(tournee.heure_debut)}`;
 
   return (
     <div className="w-full">
@@ -281,7 +337,8 @@ export default function TourneePage() {
         badges={
           chargement ? null : (
             <>
-              <Badge ton={tournee.actif ? 'teal' : 'muted'}>{tournee.actif ? 'Active' : 'Suspendue'}</Badge>
+              <Badge ton={tournee.actif ? 'teal' : 'muted'}>{tournee.actif ? 'Active' : 'Arrêtée'}</Badge>
+              {tournee.actif && !tournee.date_fin ? <Badge ton="muted">Sans fin</Badge> : null}
               {equipeActuelle.length === 0 ? <Badge ton="rouge">Sans collecteur</Badge> : null}
             </>
           )
@@ -290,7 +347,10 @@ export default function TourneePage() {
           fil: [{ href: hrefListe, label: 'Tournées' }, { label: chargement ? 'Chargement…' : quartier }],
           ligne: chargement
             ? 'Chargement des informations…'
-            : `Chaque ${JOURS[tournee.jour_semaine - 1].toLowerCase()} à ${heureCourte(tournee.heure_debut)} · ${
+            : `${(tournee.jours_semaine || []).length ? `Chaque ${libelleJours(tournee.jours_semaine)}` : 'Tournée ponctuelle'} à ${heureCourte(tournee.heure_debut)}`
+              + ` · depuis le ${dateLongue(tournee.date_debut)}`
+              + (tournee.date_fin ? ` jusqu’au ${dateLongue(tournee.date_fin)}` : ', sans fin')
+              + ` · ${
                 equipeActuelle.length
                   ? nomsEquipe(equipeActuelle.map(function (c) { return c.nom_complet; }), 4)
                   : 'aucune équipe affectée'
@@ -298,8 +358,12 @@ export default function TourneePage() {
         }}
         actions={
           chargement || !peutModifier ? null : (
-            <Btn variant={tournee.actif ? 'ghost' : 'green'} disabled={enregistrement} onClick={basculerActif}>
-              {tournee.actif ? 'Suspendre la tournée' : 'Réactiver la tournée'}
+            <Btn
+              variant="red"
+              disabled={enregistrement || !tournee.actif}
+              onClick={function () { setConfirmArret(true); }}
+            >
+              {tournee.actif ? 'Arrêter la tournée' : 'Tournée arrêtée'}
             </Btn>
           )
         }
@@ -390,6 +454,43 @@ export default function TourneePage() {
             </Tableau>
           </CarteListe>
 
+          <CarteListe
+            titre="Jours à venir"
+            sousTitre="Ce que le calendrier porte. Un jour se règle depuis le calendrier de la semaine."
+          >
+            <Tableau
+              colonnes={[
+                { cle: 'jour', label: 'Jour' },
+                { cle: 'heure', label: 'Heure' },
+                { cle: 'equipe', label: 'Équipe' },
+                { cle: 'etat', label: 'État' },
+              ]}
+              vide={chargement ? 'Chargement…' : 'Aucun jour à venir : la tournée est arrêtée.'}
+            >
+              {aVenir.map(function (r, i) {
+                const def = OCCURRENCE[r.statut] || OCCURRENCE.planifiee;
+                return (
+                  <Tr key={r.occurrence_id} rang={i}>
+                    <Td mono fort>{jourMois(r.jour)}</Td>
+                    <Td mono>
+                      {String(r.heure_debut).slice(0, 5)}
+                      {r.heure_du_jour ? <span className="ml-1 text-blue">•</span> : null}
+                    </Td>
+                    <Td>
+                      {r.collecteurs || <span className="text-red">Sans collecteur</span>}
+                      {r.equipe_modifiee ? <Badge ton="bleu" className="ml-2">Équipe du jour</Badge> : null}
+                    </Td>
+                    <Td>
+                      <Badge ton={def.ton}>{def.libelle}</Badge>
+                      {r.hors_serie ? <Badge ton="bleu" className="ml-2">Rattrapage</Badge> : null}
+                      {r.note ? <span className="ml-2 text-[12px] text-muted2">{r.note}</span> : null}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tableau>
+          </CarteListe>
+
           <CarteListe titre="Dernières réalisations" sousTitre="Ce que cette tournée a donné, jour par jour.">
             <Tableau
               colonnes={[
@@ -402,11 +503,11 @@ export default function TourneePage() {
               ]}
               vide={chargement ? 'Chargement…' : 'Cette tournée n’est encore jamais partie.'}
             >
-              {realisations.map(function (r, i) {
+              {passees.map(function (r, i) {
                 const def = OCCURRENCE[r.statut] || OCCURRENCE.planifiee;
                 return (
                   <Tr key={r.occurrence_id} rang={i}>
-                    <Td mono>{dateCourte(r.jour)}</Td>
+                    <Td mono>{jourMois(r.jour)}</Td>
                     <Td>{r.collecteurs || <span className="text-red">Sans collecteur</span>}</Td>
                     <Td>
                       <Badge ton={def.ton}>{def.libelle}</Badge>
@@ -423,6 +524,77 @@ export default function TourneePage() {
         </div>
 
         <aside className="flex flex-col gap-6 xl:col-span-4">
+          {peutModifier ? (
+            <Panel titre="Récurrence">
+              <div className="flex flex-wrap gap-1.5">
+                {JOURS.map(function (j) {
+                  const actif = recJours.includes(j.iso);
+                  return (
+                    <button
+                      key={j.iso}
+                      type="button"
+                      aria-pressed={actif}
+                      disabled={enregistrement || chargement}
+                      onClick={function () {
+                        setRecJours(function (liste) {
+                          return liste.includes(j.iso)
+                            ? liste.filter(function (x) { return x !== j.iso; })
+                            : liste.concat(j.iso);
+                        });
+                      }}
+                      className={cn(
+                        'cursor-pointer rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold outline-none transition-colors',
+                        'focus-visible:ring-2 focus-visible:ring-blue',
+                        actif ? 'border-line2 bg-panel2 text-txt' : 'border-line text-muted hover:text-txt',
+                      )}
+                    >
+                      {j.court}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">Heure</span>
+                  <Champ
+                    type="time"
+                    value={recHeure}
+                    onChange={function (e) { setRecHeure(e.target.value); }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] tracking-[1.6px] text-muted uppercase">Jusqu’à</span>
+                  <Selecteur
+                    value={recPortee}
+                    onChange={function (e) { setRecPortee(e.target.value); }}
+                    className="w-full"
+                  >
+                    <option value="sans_fin">Sans fin</option>
+                    {tournee?.date_fin ? <option value="fixe">{dateLongue(tournee.date_fin)}</option> : null}
+                    {PORTEES.filter(function (p) { return p.code !== 'jour' && p.code !== 'sans_fin'; }).map(function (p) {
+                      return <option key={p.code} value={p.code}>{p.label} à partir d’aujourd’hui</option>;
+                    })}
+                  </Selecteur>
+                </label>
+              </div>
+
+              <p className="mt-2 mb-3 text-[11px] leading-relaxed text-muted2">
+                Les jours à venir sont refaits à partir d’aujourd’hui. Ceux qui portent des
+                pointages, une note, une heure ou une équipe propre ne bougent pas — pas plus que
+                le passé.
+              </p>
+              <Btn
+                variant="green"
+                className="w-full"
+                disabled={enregistrement || chargement || !tournee?.actif}
+                onClick={enregistrerRecurrence}
+              >
+                {enregistrement ? 'Enregistrement…' : 'Enregistrer la récurrence'}
+              </Btn>
+            </Panel>
+          ) : null}
+
           <Panel titre="Équipe planifiée">
             {message ? (
               <p className={`mt-0 mb-3 text-[12.5px] ${message.ton === 'rouge' ? 'text-red' : 'text-teal'}`}>{message.texte}</p>
@@ -438,7 +610,7 @@ export default function TourneePage() {
                 />
                 <p className="mt-2 mb-3 text-[11px] text-muted2">
                   Chaque membre voit la tournée dans son application et peut y pointer. Pour un
-                  changement d’un seul jour, passez par l’onglet Réalisées du planning.
+                  remplacement d’un seul jour, ouvrez ce jour dans le calendrier.
                 </p>
                 <Btn
                   variant="green"
@@ -487,6 +659,29 @@ export default function TourneePage() {
           )}
         </aside>
       </div>
+
+      <ModalConfirmation
+        ouvert={confirmArret}
+        titre="Arrêter cette tournée ?"
+        message={
+          <>
+            Tous les jours à venir de cette tournée sont retirés du calendrier, à partir
+            d’aujourd’hui. Les jours déjà pointés, l’historique et les passages restent
+            intacts.
+            {aVenir.length ? (
+              <span className="mt-2 block text-txt">
+                {nombre(aVenir.length === 8 ? '8+' : aVenir.length)} jour(s) à venir seront retirés,
+                dont le prochain le {jourMois(aVenir[0].jour)}.
+              </span>
+            ) : null}
+          </>
+        }
+        confirmerLabel="Arrêter la tournée"
+        danger
+        pending={enregistrement}
+        onConfirmer={arreterSerie}
+        onAnnuler={function () { setConfirmArret(false); }}
+      />
 
       {foyerSelectionne ? (
         <FicheFoyer
