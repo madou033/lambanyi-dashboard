@@ -22,7 +22,7 @@ le sombre viole cet esprit.
 
 Un agent communal ouvre le dashboard et ressent :
 
-1. Une **barre de marque** verte (sidebar) — identité Lambanyi Propre.
+1. Une **barre de marque** verte (sidebar) — identité SICOD (alors « Lambanyi Propre »).
 2. Un **espace de travail neutre** (blanc / charbon froid) où le chiffre
    et le tableau dominent.
 3. Le vert **uniquement** pour : logo, nav active, CTA primaire, pastilles
