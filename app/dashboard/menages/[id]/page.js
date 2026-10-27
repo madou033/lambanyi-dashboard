@@ -438,9 +438,6 @@ export default function MenagePage() {
                   Souscrire
                 </Btn>
               ) : null}
-              <Btn variant="ghost" onClick={function () { setQrOuvert(true); }}>
-                QR
-              </Btn>
               {peutModifierMenages ? <Btn
                 variant={statut === 'suspendu' ? 'green' : 'red'}
                 onClick={function () { setBasculeOuverte(true); }}
@@ -680,6 +677,36 @@ export default function MenagePage() {
         </div>
 
         <aside className="flex flex-col gap-9 xl:col-span-4">
+          {/* Le QR avant l'identite : c'est ce qu'on vient chercher sur cette
+              fiche quand on a le foyer au telephone ou devant le guichet. */}
+          <Panel titre="Code QR">
+            <div className="flex flex-col items-center gap-3">
+              {/* Fond blanc obligatoire : un QR sombre n'est pas scannable. */}
+              <button
+                type="button"
+                onClick={function () { setQrOuvert(true); }}
+                disabled={!code}
+                title={code ? 'Agrandir' : undefined}
+                className="cursor-pointer rounded-xl bg-white p-3.5 outline-none transition-transform duration-150 hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-blue disabled:cursor-default disabled:opacity-40"
+              >
+                {code ? (
+                  <QRCodeSVG value={code} size={176} level="M" />
+                ) : (
+                  <span className="block size-[176px]" />
+                )}
+              </button>
+              <span className="font-mono text-[17px] font-bold tracking-[1.5px] text-txt tabular-nums">
+                {code || '—'}
+              </span>
+              <p className="m-0 text-center text-[11.5px] leading-relaxed text-muted2">
+                Le code que le collecteur scanne pour prouver son passage.
+              </p>
+              <Btn variant="ghost" onClick={copierCode} disabled={!code}>
+                {copie ? 'Code copié' : 'Copier le code'}
+              </Btn>
+            </div>
+          </Panel>
+
           <Panel titre="Identité">
             <dl className="m-0">
               <LigneMeta label="Code">
@@ -713,9 +740,6 @@ export default function MenagePage() {
               >
                 Planche QR du quartier
               </Link>
-              <Btn variant="ghost" onClick={copierCode}>
-                {copie ? 'Code copié' : 'Copier le code'}
-              </Btn>
             </div>
           </Panel>
 
@@ -746,11 +770,13 @@ export default function MenagePage() {
         titre={`QR · ${code}`}
         taille="sm"
       >
-        <div className="flex flex-col items-center gap-3 py-3">
-          <div className="rounded-xl bg-white p-3">
-            <QRCodeSVG value={code} size={180} />
+        <div className="flex flex-col items-center gap-4 py-3">
+          <div className="rounded-xl bg-white p-4">
+            <QRCodeSVG value={code} size={260} level="M" />
           </div>
-          <span className="font-mono text-[13px] font-bold text-txt tabular-nums">{code}</span>
+          <span className="font-mono text-[18px] font-bold tracking-[2px] text-txt tabular-nums">
+            {code}
+          </span>
         </div>
       </Modal>
 
