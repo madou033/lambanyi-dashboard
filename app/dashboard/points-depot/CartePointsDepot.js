@@ -12,7 +12,7 @@ const TUILES = {
     attribution: '&copy; OpenStreetMap',
   },
   dark: {
-    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
     attribution: '&copy; OpenStreetMap &copy; Stadia Maps',
   },
 };
@@ -100,7 +100,7 @@ export default function CartePointsDepot({
     <MapContainer
       center={centreCarte}
       zoom={14}
-      scrollWheelZoom={false}
+      scrollWheelZoom={true}
       style={{ height: '100%', width: '100%' }}
     >
       <TileLayer key={theme} attribution={tuile.attribution} url={tuile.url} />
