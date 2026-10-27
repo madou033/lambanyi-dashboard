@@ -316,20 +316,11 @@ export default function VueDEnsemble() {
           requetePaiements.in('abonnements.menage_id', ids);
         }
 
-        const requeteTournees = supabase
-          .from('tournees')
-          .select('id', { count: 'exact', head: true })
-          .eq('actif', true);
-        if (quartierIds) {
-          requeteTournees.in('quartier_id', quartierIds.length ? quartierIds : idsVides);
-        }
-
         const [
           menages,
           quartiers,
           abonnementsActifs,
           menagesSoldes,
-          tourneesActives,
           signalements,
           passages,
           paiements,
@@ -338,7 +329,6 @@ export default function VueDEnsemble() {
           requeteQuartiers,
           requeteAbonnements,
           requeteSoldes,
-          requeteTournees,
           requeteSignalements,
           // NB : la table `passages` horodate avec `created_at` (et non
           // `horodatage`, qui n'existe pas au schéma).
@@ -353,7 +343,6 @@ export default function VueDEnsemble() {
           quartiers,
           abonnementsActifs,
           menagesSoldes,
-          tourneesActives,
           signalements,
           passages,
           paiements,
@@ -374,7 +363,6 @@ export default function VueDEnsemble() {
           quartiers: quartiers.count || 0,
           abonnementsActifs: abonnementsActifs.count || 0,
           menagesSoldes: menagesSoldes.count || 0,
-          tourneesActives: tourneesActives.count || 0,
           signalements: signalements.data || [],
           passages: passages.data || [],
           paiements: paiements.data || [],
@@ -453,13 +441,12 @@ export default function VueDEnsemble() {
   const passagesEffectues = passagesDuJour.filter(function (p) {
     return p.statut === 'effectue';
   });
-  const encaisseMois = paiements
-    .filter(function (p) {
-      return p.statut === 'confirme';
-    })
-    .reduce(function (s, p) {
-      return s + Number(p.montant_gnf || 0) + Number(p.penalite_gnf || 0);
-    }, 0);
+  const recusMois = paiements.filter(function (p) {
+    return p.statut === 'confirme';
+  });
+  const encaisseMois = recusMois.reduce(function (s, p) {
+    return s + Number(p.montant_gnf || 0) + Number(p.penalite_gnf || 0);
+  }, 0);
 
   const tauxCouverture = d && d.menages > 0 ? (d.menagesSoldes / d.menages) * 100 : 0;
   const partAbonnes = d && d.menages > 0 ? Math.round((d.abonnementsActifs / d.menages) * 100) : 0;
@@ -631,7 +618,7 @@ export default function VueDEnsemble() {
         <Compteur
           label="Ménages inscrits"
           valeur={valeur(nombre(d?.menages))}
-          sous={`${d?.quartiers ?? 0} quartier${(d?.quartiers ?? 0) > 1 ? 's' : ''} couvert${(d?.quartiers ?? 0) > 1 ? 's' : ''}`}
+          sous={`${d?.quartiers ?? 0} quartier${(d?.quartiers ?? 0) > 1 ? 's' : ''} au référentiel`}
           href="/dashboard/menages"
         />
         <Compteur
@@ -662,7 +649,7 @@ export default function VueDEnsemble() {
         <Compteur
           label="Encaissé ce mois"
           valeur={valeur(montant(encaisseMois))}
-          sous={`${d?.tourneesActives ?? 0} tournée${(d?.tourneesActives ?? 0) > 1 ? 's' : ''} active${(d?.tourneesActives ?? 0) > 1 ? 's' : ''}`}
+          sous={`${nombre(recusMois.length)} reçu${recusMois.length > 1 ? 's' : ''} confirmé${recusMois.length > 1 ? 's' : ''}`}
           ton="or"
           href="/dashboard/paiements"
         />

@@ -16,8 +16,9 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata = {
-  title: 'Conakry Propre · Pilotage',
-  description: "Pilotage de l'assainissement et de la collecte des déchets de Conakry.",
+  title: 'SICOD · Pilotage',
+  description:
+    "SICOD — système intégré de collecte et d'optimisation de déchets. Pilotage de l'assainissement et de la collecte de Conakry.",
 };
 
 export default function RootLayout({ children }) {

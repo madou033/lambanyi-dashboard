@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Badge, Btn, Champ, Modal, nombre } from '@/components/ui';
 import { ListeCollecteurs } from './ListeCollecteurs';
+import { FoyersDeLOccurrence } from './FoyersDeLOccurrence';
 import { dateLongue, libelleJours } from './dates';
 
 const OCCURRENCE = {
@@ -225,6 +226,13 @@ export function ModaleOccurrence({ occurrence, serie, collecteurs, passee, onFer
           />
         </div>
       </div>
+
+      <FoyersDeLOccurrence
+        tourneeId={occurrence.tournee_id}
+        jour={occurrence.jour}
+        passee={passee}
+        suspendue={suspendue}
+      />
 
       {/* Les gestes qui retirent, séparés de l'enregistrement. */}
       <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4">

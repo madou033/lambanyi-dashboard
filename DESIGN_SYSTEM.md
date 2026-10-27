@@ -1,4 +1,4 @@
-# Design System — Conakry Propre
+# Design System — SICOD
 
 > **Origine.** Ce système est le portage direct du langage visuel de la **console CRRA / SAMU Guinée**
 > (`etikam/samu_apps` → `console/`), dont l'architecture de tokens, la composition et les patterns
