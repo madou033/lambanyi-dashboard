@@ -25,6 +25,7 @@ import {
 import { useContexte } from '@/components/ContexteProvider';
 import { cheminContexte, peutEcrire } from '@/lib/contexte';
 import { supabase } from '@/lib/supabase';
+import { libelleJours } from '../../tournees/dates';
 
 async function entetesApi() {
   const { data } = await supabase.auth.getSession();
@@ -35,7 +36,6 @@ async function entetesApi() {
   return { headers, token: data.session?.access_token || '' };
 }
 
-const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
 const MOTIFS_PASSAGE = {
   bac_non_sorti: 'Bac non sorti',
@@ -126,10 +126,9 @@ export default function CollecteurPage() {
         supabase
           .from('tournees')
           .select(
-            'id, jour_semaine, heure_debut, actif, quartier_id, quartiers(nom), tournees_collecteurs!inner(collecteur_id)',
+            'id, jours_semaine, date_debut, date_fin, heure_debut, actif, quartier_id, quartiers(nom), tournees_collecteurs!inner(collecteur_id)',
           )
           .eq('tournees_collecteurs.collecteur_id', id)
-          .order('jour_semaine')
           .order('heure_debut'),
         // passages_detail porte le motif, l'ecart GPS au domicile et le
         // seuil communal : c'est la que se lit la preuve de presence.
@@ -536,7 +535,7 @@ export default function CollecteurPage() {
                 <table className="w-full border-collapse text-left">
                   <thead>
                     <tr className="border-b border-line text-[10px] tracking-wide text-muted uppercase">
-                      <th className="px-4 py-2.5 font-semibold">Jour</th>
+                      <th className="px-4 py-2.5 font-semibold">Jours</th>
                       <th className="px-4 py-2.5 font-semibold">Heure</th>
                       <th className="px-4 py-2.5 font-semibold">Quartier</th>
                       <th className="px-4 py-2.5 text-right font-semibold">Statut</th>
@@ -547,7 +546,7 @@ export default function CollecteurPage() {
                       return (
                         <tr key={tournee.id} className="border-b border-line last:border-b-0">
                           <td className="px-4 py-2.5 text-[12.5px] font-semibold text-txt">
-                            {JOURS[Number(tournee.jour_semaine) - 1] || '—'}
+                            {libelleJours(tournee.jours_semaine)}
                           </td>
                           <td className="px-4 py-2.5 font-mono text-[12px] text-muted tabular-nums">
                             {heureCourte(tournee.heure_debut)}
@@ -756,7 +755,7 @@ export default function CollecteurPage() {
                           <b className="text-txt">
                             {relation(tournee.quartiers)?.nom || 'Sans quartier'}
                           </b>{' '}
-                          · {JOURS[Number(tournee.jour_semaine) - 1] || 'Jour inconnu'}
+                          · {libelleJours(tournee.jours_semaine)}
                         </p>
                         <Selecteur
                           value={id}
