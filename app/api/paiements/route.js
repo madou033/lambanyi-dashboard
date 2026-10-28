@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import { exigenceApi, menageDansContexte, refuserEcritureObservateur } from "@/lib/api-auth";
 
+// Un identifiant qui n'existe pas : il ferme le perimetre sans vider la
+// requete de sa forme.
+const AUCUN_QUARTIER = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Les deux bornages ci-dessous renvoient { requete }, jamais la requete nue.
+ *
+ * Un PostgrestFilterBuilder porte un `.then` : c'est un thenable. Une fonction
+ * `async` qui en renvoie un ne le transmet donc pas, elle l'execute et resout
+ * son resultat. Le bornage rendait ainsi un `{ data, error }` deja joue, sur
+ * lequel la pose des filtres echouait — « req.eq is not a function », une 500
+ * a chaque filtre du journal. L'enveloppe laisse la requete inerte jusqu'au
+ * dernier await.
+ */
 async function bornerParContexte(sb, req, ctx, p, colonne) {
   let communeId = ctx.niveau === "commune" ? ctx.communeId : p.get("lectureCommuneId");
   let quartierReq = sb.from("quartiers").select("id");
@@ -10,14 +24,14 @@ async function bornerParContexte(sb, req, ctx, p, colonne) {
     const liens = await sb.from("pme_quartiers").select("quartier_id").eq("pme_id", ctx.pmeId);
     if (liens.error) return { error: liens.error };
     const ids = liens.data.map(function (x) { return x.quartier_id; });
-    return ids.length ? req.in(colonne, ids) : req.in(colonne, ["00000000-0000-0000-0000-000000000000"]);
+    return { requete: req.in(colonne, ids.length ? ids : [AUCUN_QUARTIER]) };
   } else if (!communeId) {
-    return req;
+    return { requete: req };
   }
   const quartiers = await quartierReq;
   if (quartiers.error) return { error: quartiers.error };
   const ids = quartiers.data.map(function (x) { return x.id; });
-  return ids.length ? req.in(colonne, ids) : req.in(colonne, ["00000000-0000-0000-0000-000000000000"]);
+  return { requete: req.in(colonne, ids.length ? ids : [AUCUN_QUARTIER]) };
 }
 
 async function bornerPaiementsDetail(sb, req, ctx, p) {
@@ -32,13 +46,12 @@ async function bornerPaiementsDetail(sb, req, ctx, p) {
     if (liens.error) return { error: liens.error };
     menages = menages.in("quartier_id", liens.data.map(function (x) { return x.quartier_id; }));
   } else if (!communeId) {
-    return req;
+    return { requete: req };
   }
   const r = await menages;
   if (r.error) return { error: r.error };
-  return r.data.length
-    ? req.in("code_menage", r.data.map(function (x) { return x.code_menage; }))
-    : req.in("code_menage", ["__aucun__"]);
+  const codes = r.data.map(function (x) { return x.code_menage; });
+  return { requete: req.in("code_menage", codes.length ? codes : ["__aucun__"]) };
 }
 
 function appliquerFiltres(req, p) {
@@ -97,7 +110,7 @@ export async function GET(request) {
     let req = sb.from("quartiers").select("id, nom").eq("actif", true).order("nom");
     const borne = await bornerParContexte(sb, req, ctx, p, "id");
     if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
-    const r = await borne;
+    const r = await borne.requete;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     return NextResponse.json({ data: r.data.map(function (q) { return q.nom; }) });
   }
@@ -112,7 +125,7 @@ export async function GET(request) {
     let req = sb.from("menages_solde").select("*").or(filtre).limit(15);
     const borne = await bornerParContexte(sb, req, ctx, p, "quartier_id");
     if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
-    const r = await borne;
+    const r = await borne.requete;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
     return NextResponse.json({ data: r.data });
   }
@@ -123,7 +136,7 @@ export async function GET(request) {
     let acces = sb.from("menages_solde").select("abonnement_id, quartier_id").eq("abonnement_id", id);
     const borneSolde = await bornerParContexte(sb, acces, ctx, p, "quartier_id");
     if (borneSolde.error) return NextResponse.json({ error: borneSolde.error.message }, { status: 400 });
-    const accesResultat = await borneSolde;
+    const accesResultat = await borneSolde.requete;
     if (accesResultat.error) return NextResponse.json({ error: accesResultat.error.message }, { status: 400 });
     if (!accesResultat.data.length) {
       return NextResponse.json({ error: "Abonnement introuvable" }, { status: 404 });
@@ -149,7 +162,7 @@ export async function GET(request) {
     let req = sb.from("paiements_detail").select("*").order("created_at", { ascending: false }).limit(5000);
     const borne = await bornerPaiementsDetail(sb, req, ctx, p);
     if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
-    req = borne;
+    req = borne.requete;
     req = appliquerFiltres(req, p);
     const r = await req;
     if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
@@ -166,7 +179,7 @@ export async function GET(request) {
   let req = sb.from("paiements_detail").select("*").order("created_at", { ascending: false }).limit(limite);
   const borne = await bornerPaiementsDetail(sb, req, ctx, p);
   if (borne.error) return NextResponse.json({ error: borne.error.message }, { status: 400 });
-  req = borne;
+  req = borne.requete;
   req = appliquerFiltres(req, p);
   const r = await req;
   if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });

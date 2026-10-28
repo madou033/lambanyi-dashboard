@@ -33,6 +33,28 @@ import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
+/**
+ * Pourquoi la requete a echoue, en une phrase qu'on peut lire a voix haute.
+ *
+ * Le message precedent annoncait une cle de service absente, quelle que soit
+ * la panne. Il a tenu bon pendant qu'un tout autre defaut — une 500 des le
+ * premier filtre — restait invisible. Un ecran d'erreur qui nomme la mauvaise
+ * cause coute plus cher qu'un ecran qui dit simplement ce qu'il a vu.
+ */
+async function motifEchec(reponse) {
+  if (reponse.status === 401 || reponse.status === 403) {
+    return "votre session n'a pas les droits requis";
+  }
+  try {
+    const j = await reponse.json();
+    const dit = j.error || j.erreur;
+    if (dit) return String(dit);
+  } catch {
+    // Pas de corps exploitable : le code de retour suffira.
+  }
+  return `le serveur a repondu ${reponse.status}`;
+}
+
 async function apiHeaders(contentType) {
   const { data } = await supabase.auth.getSession();
   const headers = {};
@@ -126,13 +148,13 @@ export default function PointsDepotPage() {
         ? `?lectureCommuneId=${encodeURIComponent(ctx.lectureCommuneId)}`
         : '';
       const r = await fetch(`/api/points-depot${qs}`, { headers: await apiHeaders() });
-      if (!r.ok) throw new Error();
+      if (!r.ok) throw new Error(await motifEchec(r));
       const j = await r.json();
       setPoints(j.data || []);
       setErreur(null);
-    } catch {
+    } catch (panne) {
       setErreur(
-        "Le référentiel des points de dépôt est injoignable — la clé de service Supabase n'est pas configurée.",
+        `Le référentiel des points de dépôt n'a pas pu être chargé — ${panne.message || 'cause inconnue'}.`,
       );
     }
     setChargement(false);
