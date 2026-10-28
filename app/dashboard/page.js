@@ -212,24 +212,12 @@ export default function VueDEnsemble() {
       async function charger() {
         const communeId = ctx?.lectureCommuneId || ctx?.communeId || null;
         let quartierIds = null;
-        let menageIds = null;
         const idsVides = ['00000000-0000-0000-0000-000000000000'];
-        if (communeId) {
-          const [refQuartiers, refMenages] = await Promise.all([
-            supabase.from('quartiers').select('id').eq('commune_id', communeId),
-            supabase.from('menages').select('id').eq('commune_id', communeId),
-          ]);
-          if (refQuartiers.error || refMenages.error) {
-            if (!annule) setErreur('Impossible de charger le périmètre communal.');
-            return;
-          }
-          quartierIds = (refQuartiers.data || []).map(function (ligne) {
-            return ligne.id;
-          });
-          menageIds = (refMenages.data || []).map(function (ligne) {
-            return ligne.id;
-          });
-        }
+        // Le périmètre d'une PME tient en quelques quartiers : on peut le
+        // porter dans un `in`. Celui d'une commune se dit par `commune_id`,
+        // jamais par la liste de ses foyers — ils se comptent par centaines,
+        // et une URL qui les énumère tous dépasse ce qu'un serveur accepte.
+        // C'est ce qui vidait cet écran dès qu'une commune était fournie.
         if (ctx?.niveau === 'pme' && ctx.pmeId) {
           const perimeter = await supabase
             .from('pme_quartiers')
@@ -241,17 +229,6 @@ export default function VueDEnsemble() {
           }
           quartierIds = (perimeter.data || []).map(function (ligne) {
             return ligne.quartier_id;
-          });
-          const menagesPerimetre = await supabase
-            .from('menages')
-            .select('id')
-            .in('quartier_id', quartierIds.length ? quartierIds : idsVides);
-          if (menagesPerimetre.error) {
-            if (!annule) setErreur(`Impossible de charger le périmètre : ${menagesPerimetre.error.message}`);
-            return;
-          }
-          menageIds = (menagesPerimetre.data || []).map(function (ligne) {
-            return ligne.id;
           });
         }
         const debutJour = new Date();
@@ -292,35 +269,48 @@ export default function VueDEnsemble() {
           requeteSignalements.in('quartier_id', ids);
           requetePassages.in('menages.quartier_id', ids);
         }
+        // Le foyer porte sa commune et son quartier : abonnements et paiements
+        // s'y rattachent par jointure plutôt que par une liste d'identifiants.
+        const perimetrePose = Boolean(communeId || quartierIds);
         const requeteAbonnements = supabase
           .from('abonnements')
-          .select('id', { count: 'exact', head: true })
+          .select(perimetrePose ? 'id, menages!inner(commune_id, quartier_id)' : 'id', {
+            count: 'exact',
+            head: true,
+          })
           .eq('statut', 'actif');
-        const requeteSoldes = supabase
-          .from('menages_solde')
-          .select('menage_id', { count: 'exact', head: true })
-          .eq('est_solde', true);
+        // La couverture passe par une fonction d'agregat et non par un
+        // `count` sur `menages_solde` : cette vue appelle solde_abonnement()
+        // par foyer, ce qui depassait le delai de PostgREST des qu'une commune
+        // comptait quelques centaines de foyers.
+        const requeteCouverture = supabase.rpc('couverture_recouvrement', {
+          p_commune_id: communeId,
+          p_quartier_ids: communeId ? null : quartierIds,
+        });
         const requetePaiements = supabase
           .from('paiements')
           .select(
-            menageIds
-              ? 'id, montant_gnf, penalite_gnf, statut, created_at, abonnements!inner(menage_id)'
+            perimetrePose
+              ? 'id, montant_gnf, penalite_gnf, statut, created_at, abonnements!inner(menages!inner(commune_id, quartier_id))'
               : 'id, montant_gnf, penalite_gnf, statut, created_at',
           )
           .gte('created_at', debutMois.toISOString())
           .limit(2000);
-        if (menageIds) {
-          const ids = menageIds.length ? menageIds : idsVides;
-          requeteAbonnements.in('menage_id', ids);
-          requeteSoldes.in('menage_id', ids);
-          requetePaiements.in('abonnements.menage_id', ids);
+
+        if (communeId) {
+          requeteAbonnements.eq('menages.commune_id', communeId);
+          requetePaiements.eq('abonnements.menages.commune_id', communeId);
+        } else if (quartierIds) {
+          const ids = quartierIds.length ? quartierIds : idsVides;
+          requeteAbonnements.in('menages.quartier_id', ids);
+          requetePaiements.in('abonnements.menages.quartier_id', ids);
         }
 
         const [
           menages,
           quartiers,
           abonnementsActifs,
-          menagesSoldes,
+          couverture,
           signalements,
           passages,
           paiements,
@@ -328,7 +318,7 @@ export default function VueDEnsemble() {
           requeteMenages,
           requeteQuartiers,
           requeteAbonnements,
-          requeteSoldes,
+          requeteCouverture,
           requeteSignalements,
           // NB : la table `passages` horodate avec `created_at` (et non
           // `horodatage`, qui n'existe pas au schéma).
@@ -342,7 +332,7 @@ export default function VueDEnsemble() {
           menages,
           quartiers,
           abonnementsActifs,
-          menagesSoldes,
+          couverture,
           signalements,
           passages,
           paiements,
@@ -362,7 +352,9 @@ export default function VueDEnsemble() {
           menages: menages.count || 0,
           quartiers: quartiers.count || 0,
           abonnementsActifs: abonnementsActifs.count || 0,
-          menagesSoldes: menagesSoldes.count || 0,
+          menagesSoldes: couverture.data?.[0]?.a_jour || 0,
+          menagesEnDette: couverture.data?.[0]?.en_dette || 0,
+          menagesAbonnes: couverture.data?.[0]?.abonnes || 0,
           signalements: signalements.data || [],
           passages: passages.data || [],
           paiements: paiements.data || [],
@@ -811,13 +803,13 @@ export default function VueDEnsemble() {
                   },
                   {
                     label: 'Foyers en dette',
-                    valeur: nombre(d.menages - d.menagesSoldes),
+                    valeur: nombre(d.menagesEnDette),
                     couleur: 'var(--lp-red)',
                   },
                   {
-                    label: 'Abonnements actifs',
-                    valeur: nombre(d.abonnementsActifs),
-                    couleur: 'var(--lp-txt)',
+                    label: 'Jamais abonnés',
+                    valeur: nombre(Math.max(0, d.menages - d.menagesAbonnes)),
+                    couleur: 'var(--lp-muted2)',
                   },
                 ]}
               />
