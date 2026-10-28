@@ -31,6 +31,7 @@ import {
 import { IconPlus, IconRecherche } from '@/components/icons';
 import { peutEcrire } from '@/lib/contexte';
 import { useContexte } from '@/components/ContexteProvider';
+import { RecuPaiement } from './RecuPaiement';
 import { supabase } from '@/lib/supabase';
 import { filtreCommune } from '@/lib/perimetre';
 
@@ -70,6 +71,7 @@ const COLONNES = [
   { cle: 'penalite', label: 'Pénalité', align: 'right' },
   { cle: 'mode', label: 'Mode' },
   { cle: 'statut', label: 'Statut' },
+  { cle: 'recu', label: '', align: 'right' },
 ];
 
 function libelleMode(code) {
@@ -485,6 +487,7 @@ function Guichet({ ouvert, onFermer, onEncaisse, requeteInitiale = '', lectureCo
 function PaiementsPage() {
   const searchParams = useSearchParams();
   const { ctx, profil, communeLecture } = useContexte();
+  const [recu, setRecu] = useState(null); // le paiement dont on montre la fiche
   const qUrl = (searchParams.get('q') || '').trim();
   const [liste, setListe] = useState([]);
   const [totaux, setTotaux] = useState({ montant: 0, penalite: 0 });
@@ -817,7 +820,12 @@ function PaiementsPage() {
           >
             {tranche.map(function (p, rang) {
               return (
-                <Tr key={p.id} rang={rang}>
+                <Tr
+                  key={p.id}
+                  rang={rang}
+                  onClick={function () { setRecu(p); }}
+                  className="cursor-pointer"
+                >
                   <Td mono>{dateCourte(p.created_at)}</Td>
                   <Td mono fort>
                     {p.code_menage || '—'}
@@ -848,12 +856,24 @@ function PaiementsPage() {
                   <Td>
                     <BadgeStatut statut={p.statut} />
                   </Td>
+                  <Td align="right" className="no-print">
+                    <span className="text-[11px] whitespace-nowrap text-muted2">Reçu →</span>
+                  </Td>
                 </Tr>
               );
             })}
           </Tableau>
         </CarteListe>
       </div>
+
+      {recu ? (
+        <RecuPaiement
+          paiement={recu}
+          territoire={territoire}
+          emetteur={profil?.nom_complet}
+          onFermer={function () { setRecu(null); }}
+        />
+      ) : null}
 
       <Guichet
         ouvert={guichet}
