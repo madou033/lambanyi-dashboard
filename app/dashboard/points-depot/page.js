@@ -30,6 +30,7 @@ import {
 import { IconPlus } from '@/components/icons';
 import { supabase } from '@/lib/supabase';
 import { peutEcrire } from '@/lib/contexte';
+import { lirePosition } from '@/lib/coordonnees';
 import { useContexte } from '@/components/ContexteProvider';
 import { FiltreCommuneRegion } from '@/components/FiltreCommuneRegion';
 
@@ -264,6 +265,8 @@ export default function PointsDepotPage() {
   const capaciteTotale = actifs.reduce(function (s, p) {
     return s + Number(p.capacite_m3 || 0);
   }, 0);
+  // Lue à chaque rendu, pour que le formulaire parle pendant la frappe.
+  const saisieCoord = lirePosition(form.latitude, form.longitude);
 
   /* -- Actions ----------------------------------------------------- */
 
@@ -301,12 +304,24 @@ export default function PointsDepotPage() {
       setMessageForm('Le nom et le type sont obligatoires.');
       return;
     }
+    // Les coordonnées sont relues ici, et non laissées à l'API : une position
+    // illisible partait en `NaN`, que la sérialisation JSON changeait en
+    // `null`. Le point s'enregistrait alors sans GPS, sans rien dire.
+    const saisie = lirePosition(form.latitude, form.longitude);
+    if (saisie.erreur) {
+      setMessageForm(`${saisie.erreur} Attendu : 9.6150 et -13.6220.`);
+      return;
+    }
+    if (saisie.incomplete) {
+      setMessageForm('Une position demande les deux coordonnées — ou laissez les deux vides.');
+      return;
+    }
     setEnregistrement(true);
     try {
       const r = await fetch('/api/points-depot', {
         method: 'POST',
         headers: await apiHeaders('application/json'),
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, latitude: saisie.lat, longitude: saisie.lon }),
       });
       const j = await r.json().catch(function () {
         return {};
@@ -765,6 +780,7 @@ export default function PointsDepotPage() {
                 onChange={function (e) {
                   majChamp('latitude', e.target.value);
                 }}
+                inputMode="decimal"
                 placeholder="9.6150"
                 className="font-mono"
               />
@@ -779,10 +795,19 @@ export default function PointsDepotPage() {
                 onChange={function (e) {
                   majChamp('longitude', e.target.value);
                 }}
+                inputMode="decimal"
                 placeholder="-13.6220"
                 className="font-mono"
               />
             </label>
+
+            {/* Le dire pendant la frappe, pas à l'enregistrement : avant, une
+                coordonnée illisible faisait tomber la carte sans un mot. */}
+            {saisieCoord.erreur ? (
+              <p className="m-0 text-[11px] text-gold sm:col-span-2">
+                {saisieCoord.erreur} Attendu : 9.6150 et -13.6220 — la virgule est acceptée.
+              </p>
+            ) : null}
           </div>
 
           <div

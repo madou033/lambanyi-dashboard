@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { exigenceApi, quartiersDuContexte, refuserEcritureObservateur } from "@/lib/api-auth";
+import { lirePosition } from "@/lib/coordonnees";
 
 async function pmeAutorisee(sb, ctx, pmeId, quartiers) {
   if (!pmeId) return true;
@@ -90,15 +91,22 @@ export async function POST(request) {
   if (perimetre.error) return NextResponse.json({ error: perimetre.error.message }, { status: 400 });
   if (!perimetre.data) return NextResponse.json({ error: "Hors perimetre" }, { status: 403 });
 
-  const lat = b.latitude === "" || b.latitude === null ? null : Number(b.latitude);
-  const lon = b.longitude === "" || b.longitude === null ? null : Number(b.longitude);
-
-  if (lat !== null && (lat < -90 || lat > 90)) {
-    return NextResponse.json({ error: "Latitude hors limites" }, { status: 400 });
+  // Le controle de bornes precedent comparait un Number() brut : `NaN < -90`
+  // et `NaN > 90` sont tous deux faux, donc une saisie illisible franchissait
+  // les deux tests. `JSON.stringify(NaN)` valant `null`, le point partait
+  // ensuite sans position — enregistre, mais muet. On lit donc d'abord.
+  const lu = lirePosition(b.latitude, b.longitude);
+  if (lu.erreur) {
+    return NextResponse.json({ error: lu.erreur }, { status: 400 });
   }
-  if (lon !== null && (lon < -180 || lon > 180)) {
-    return NextResponse.json({ error: "Longitude hors limites" }, { status: 400 });
+  if (lu.incomplete) {
+    return NextResponse.json(
+      { error: "Une position demande la latitude et la longitude." },
+      { status: 400 }
+    );
   }
+  const lat = lu.lat;
+  const lon = lu.lon;
 
   const r = await sb.rpc("enregistrer_point_depot", {
     p_id: b.id || null,
