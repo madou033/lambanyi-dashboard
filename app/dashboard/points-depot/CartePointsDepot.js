@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 're
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from '@/components/ThemeProvider';
+import { lirePosition } from '@/lib/coordonnees';
 
 const TUILES = {
   light: {
@@ -66,8 +67,17 @@ function CapteurClic({ onChoisir }) {
   return null;
 }
 
-function Recentrer({ lat, lon }) {
+/**
+ * Recentre sur la saisie, et seulement quand elle est entière.
+ *
+ * `position` vient de `lirePosition` : c'est un couple de nombres finis, ou
+ * `null`. Leaflet refuse tout le reste en jetant — un `NaN` glissé ici cassait
+ * l'écran de création dès la frappe d'une coordonnée mal formée.
+ */
+function Recentrer({ position }) {
   const carte = useMap();
+  const lat = position ? position[0] : null;
+  const lon = position ? position[1] : null;
   useEffect(
     function () {
       if (lat != null && lon != null) carte.setView([lat, lon], carte.getZoom());
@@ -75,6 +85,13 @@ function Recentrer({ lat, lon }) {
     [lat, lon, carte],
   );
   return null;
+}
+
+/** Un couple sûr, ou rien : on ne donne jamais à Leaflet de quoi jeter. */
+function positionSure(lat, lon) {
+  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))
+    ? [Number(lat), Number(lon)]
+    : null;
 }
 
 export default function CartePointsDepot({
@@ -88,13 +105,19 @@ export default function CartePointsDepot({
 }) {
   const { theme } = useTheme();
   const tuile = TUILES[theme] ?? TUILES.dark;
-  const lat = latitude === '' || latitude == null ? null : Number(latitude);
-  const lon = longitude === '' || longitude == null ? null : Number(longitude);
-  const centreCarte = lat != null && lon != null ? [lat, lon] : centre || CENTRE_CONAKRY;
+  // La saisie est lue une fois, proprement : jamais de NaN au-delà de cette ligne.
+  const saisie = lirePosition(latitude, longitude);
+  const centreCarte = saisie.position || positionSure(centre?.[0], centre?.[1]) || CENTRE_CONAKRY;
 
-  const existants = (points || []).filter(function (p) {
-    return p.latitude != null && p.longitude != null && p.id !== idCourant;
-  });
+  // Un point venu de la base peut porter une position partielle ou aberrante ;
+  // on le laisse hors carte plutôt que de faire tomber l'écran avec lui.
+  const existants = (points || [])
+    .map(function (p) {
+      return { ...p, position: positionSure(p.latitude, p.longitude) };
+    })
+    .filter(function (p) {
+      return p.position && p.id !== idCourant;
+    });
 
   return (
     <MapContainer
@@ -106,12 +129,12 @@ export default function CartePointsDepot({
       <TileLayer key={theme} attribution={tuile.attribution} url={tuile.url} />
 
       {selectionnable ? <CapteurClic onChoisir={onChoisir} /> : null}
-      <Recentrer lat={lat} lon={lon} />
+      <Recentrer position={saisie.position} />
 
       {existants.map(function (p) {
         const icone = !p.actif ? PIN_INACTIF : estCommunal(p) ? PIN_COMMUNE : PIN_PME;
         return (
-          <Marker key={p.id} position={[p.latitude, p.longitude]} icon={icone}>
+          <Marker key={p.id} position={p.position} icon={icone}>
             <Popup>
               <strong>{p.nom}</strong>
               <br />
@@ -125,9 +148,9 @@ export default function CartePointsDepot({
         );
       })}
 
-      {selectionnable && lat != null && lon != null ? (
+      {selectionnable && saisie.position ? (
         <Marker
-          position={[lat, lon]}
+          position={saisie.position}
           icon={PIN_SELECTION}
           draggable
           eventHandlers={{
